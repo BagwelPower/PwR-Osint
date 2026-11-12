@@ -1,0 +1,12 @@
+{
+  "shodan_api_key": "",
+  "virustotal_api_key": "",
+  "hunter_api_key": "",
+  "securitytrails_api_key": "",
+  "censys_api_id": "",
+  "censys_api_secret": "",
+  "whoisxml_api_key": "",
+  "haveibeenpwned_api_key": "",
+  "timeout": 10,
+  "user_agent": "PwR-Osint/1.0"
+}
