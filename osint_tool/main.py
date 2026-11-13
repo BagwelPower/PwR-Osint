@@ -457,8 +457,10 @@ class ToolScreen:
         if not path and f.bytes:
             import os
             import tempfile
-            tmp_dir = os.environ.get("FLET_APP_STORAGE_TEMP") or tempfile.gettempdir()
-            path = os.path.join(tmp_dir, f"pwr_{os.getpid()}_{f.name}")
+            tmp_dir = os.path.join(os.environ.get("FLET_APP_STORAGE_TEMP") or tempfile.gettempdir(),
+                                   "pwr-osint-secimler")
+            os.makedirs(tmp_dir, exist_ok=True)
+            path = os.path.join(tmp_dir, os.path.basename(f.name) or "foto.jpg")
             with open(path, "wb") as fh:
                 fh.write(f.bytes)
         if not path:
@@ -820,7 +822,7 @@ class Diagnostics:
                               on_click=lambda e: self.page.run_task(self.copy, e))]),
             controls=[ft.SafeArea(expand=True, content=ft.ListView(expand=True, padding=16, spacing=10, controls=[
                 ft.Text("Her aracı örnek bir girdiyle bu cihazdan gerçek servislere karşı çalıştırır. "
-                        "Sonucu kopyalayıp geliştiriciye gönderebilirsiniz. Yaklaşık 2-4 dakika sürer.",
+                        "Sonucu kopyalayıp geliştiriciye gönderebilirsiniz. Bağlantı hızına göre birkaç dakika sürer.",
                         size=12, color=MUTED),
                 ft.FilledButton("Testi başlat", icon=ft.Icons.PLAY_ARROW, on_click=self.start),
                 self.status, self.progress, self.rows]))])

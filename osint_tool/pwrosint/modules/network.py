@@ -538,10 +538,17 @@ def _wayback(ctx: Context, rep: Report, v: dict) -> None:
     sec.add("Son kayıt", _ts(l_ts), url=f"https://web.archive.org/web/{l_ts}/{domain}")
     rep.changed()
 
-    rows = ctx.http.json(cdx, params={
-        "url": f"{domain}/*", "output": "json", "fl": "timestamp,original,statuscode,mimetype",
-        "collapse": "urlkey", "filter": "statuscode:200", "limit": 400,
-    }, timeout=max(30, ctx.settings.timeout), expect=list) or []
+    try:
+        rows = ctx.http.json(cdx, params={
+            "url": f"{domain}/*", "output": "json", "fl": "timestamp,original,statuscode,mimetype",
+            "collapse": "urlkey", "filter": "statuscode:200", "limit": 400,
+        }, timeout=max(45, ctx.settings.timeout), expect=list) or []
+        rep.source("Wayback (sayfa listesi)", True)
+    except OsintError as e:  # özet zaten alındı; ağır liste sorgusu yavaşsa rapor yine de dönsün
+        rep.source("Wayback (sayfa listesi)", False, str(e).split(": ", 1)[-1])
+        rep.notice("Wayback Machine sayfa listesini zamanında döndürmedi; yalnızca özet gösteriliyor. "
+                   "Birkaç dakika sonra tekrar deneyin.")
+        rows = []
     urls = [r for r in rows[1:] if isinstance(r, list) and len(r) >= 2]
     interesting_ext = (".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".sql", ".zip", ".bak",
                        ".env", ".json", ".xml", ".txt", ".log", ".conf", ".config")

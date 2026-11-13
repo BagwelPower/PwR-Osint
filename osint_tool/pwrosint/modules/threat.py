@@ -130,9 +130,16 @@ def password_strength(pw: str) -> list[tuple[str, str, Level]]:
 
 
 def _hibp_password(ctx: Context, rep: Report, v: dict) -> None:
-    count = pwned_count(ctx, v["password"])
     sec = rep.section("Sonuç")
-    if count:
+    try:
+        count = pwned_count(ctx, v["password"])
+        rep.source("Pwned Passwords", True)
+    except OsintError as e:  # güç analizi çevrimdışı da yapılabilir
+        rep.source("Pwned Passwords", False, str(e).split(": ", 1)[-1])
+        count = None
+    if count is None:
+        sec.add("Durum", "Sızıntı veritabanına ulaşılamadı; yalnızca güç analizi yapıldı", level=Level.MUTED)
+    elif count:
         sec.add("Durum", f"Bu şifre {count:,} kez sızıntılarda görülmüş. KULLANMAYIN!".replace(",", "."),
                 level=Level.BAD)
     else:

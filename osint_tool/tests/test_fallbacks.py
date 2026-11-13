@@ -180,3 +180,34 @@ def test_fullscan_merges_all_tools(ctx, http, monkeypatch):
     assert {"Altyapı", "DNS"} <= prefixes
     assert report.summary.startswith("8 araç tamamlandı")
     assert any(n.startswith("TLS aracı") for n, ok, _ in report.sources if not ok)  # TLS hatası kaynak durumunda
+
+
+def test_permutator_works_offline(ctx, http):
+    from pwrosint.core.errors import OsintError
+    http.add("https://", OsintError("ağ yok"))
+    report = run(ctx, "email", "permutate", first="Ali", last="Veli", domain="ornek.com")
+    assert not report.errors and "ali.veli@ornek.com" in items(report, "Olası adresler")
+
+
+def test_offline_capable_tools_degrade_gracefully(ctx, http):
+    from pwrosint.core.errors import OsintError
+    from pwrosint.modules.misc import parse_vin
+    http.add("https://", OsintError("ağ yok"))
+    pw = run(ctx, "hibp", "password", password="galatasaray1905")
+    assert not pw.errors and "Değerlendirme" in items(pw, "Şifre gücü")
+    vin = run(ctx, "vehicle", "vin", vin=parse_vin("1HGCM82633A004352"))
+    assert not vin.errors and items(vin, "Yapı")["Kontrol hanesi"].level == Level.OK
+    assert "ulaşılamadı" in items(vin, "Çözümleme")["Sonuç"].value
+    geo = run(ctx, "geo", "coords", coords=(41.0, 29.0))
+    assert not geo.errors and "Google Maps" in items(geo, "Haritalar")
+
+
+def test_wayback_listing_timeout_keeps_summary(ctx, http):
+    from pwrosint.core.errors import OsintError
+    cdx = "https://web.archive.org/cdx/search/cdx"
+    http.add(cdx, [["timestamp"], ["20020101000000"]])
+    http.add(cdx, OsintError("web.archive.org: zaman aşımı (45 sn)"), match_params={"url": "ornek.com/*"})
+    report = run(ctx, "wayback", domain="ornek.com")
+    assert not report.errors
+    assert items(report, "Arşiv özeti")["İlk kayıt"].value.startswith("2002-01-01")
+    assert any("sayfa listesini" in n for n in report.notices)

@@ -15,12 +15,20 @@ from ..core.report import Level, Report
 
 def _coords(ctx: Context, rep: Report, v: dict) -> None:
     lat, lon = v["coords"]
-    data = ctx.http.json("https://nominatim.openstreetmap.org/reverse",
-                         params={"lat": lat, "lon": lon, "format": "jsonv2", "addressdetails": 1,
-                                 "accept-language": "tr"},
-                         headers={"User-Agent": ctx.settings.user_agent})
     sec = rep.section("Adres (OpenStreetMap)")
-    if not data or "error" in data:
+    try:
+        data = ctx.http.json("https://nominatim.openstreetmap.org/reverse",
+                             params={"lat": lat, "lon": lon, "format": "jsonv2", "addressdetails": 1,
+                                     "accept-language": "tr"},
+                             headers={"User-Agent": ctx.settings.user_agent})
+        rep.source("OpenStreetMap", True)
+    except OsintError as e:
+        rep.source("OpenStreetMap", False, str(e).split(": ", 1)[-1])
+        sec.add("Sonuç", "Adres servisine ulaşılamadı; harita linklerini kullanın", level=Level.MUTED)
+        data = False
+    if data is False:
+        pass
+    elif not data or "error" in data:
         sec.add("Sonuç", "Bu koordinatta adres bulunamadı (deniz / boş alan?)", level=Level.MUTED)
     else:
         sec.add("Tam adres", data.get("display_name", "—"))
@@ -190,8 +198,13 @@ def _vin(ctx: Context, rep: Report, v: dict) -> None:
                     "Kuzey Amerika aracında hatalı kontrol hanesi: VIN yanlış yazılmış veya sahte olabilir.")
     rep.changed()
 
-    data = ctx.http.json(f"https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/{vin}",
-                         params={"format": "json"}, timeout=max(20, ctx.settings.timeout))
+    try:
+        data = ctx.http.json(f"https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/{vin}",
+                             params={"format": "json"}, timeout=max(20, ctx.settings.timeout))
+        rep.source("NHTSA vPIC", True)
+    except OsintError as e:  # yapı, kontrol hanesi ve yıl çevrimdışı hesaplandı; çözümleme ek bilgi
+        rep.source("NHTSA vPIC", False, str(e).split(": ", 1)[-1])
+        data = None
     results = (data or {}).get("Results") or [{}]
     r = results[0] if isinstance(results[0], dict) else {}
     dec = rep.section("Çözümleme (NHTSA vPIC)")
@@ -205,7 +218,10 @@ def _vin(ctx: Context, rep: Report, v: dict) -> None:
         if (val := (r.get(key) or "").strip()) and val != "Not Applicable":
             dec.add(label, val, level=Level.OK)
             shown += 1
-    if not shown:
+    if data is None:
+        dec.add("Sonuç", "NHTSA veritabanına ulaşılamadı; yukarıdaki yapı bilgisi cihazda hesaplandı",
+                level=Level.MUTED)
+    elif not shown:
         dec.add("Sonuç", "NHTSA bu VIN için bilgi döndürmedi", level=Level.MUTED)
     if (err := r.get("ErrorText", "")) and not err.startswith("0 "):
         dec.note = "NHTSA notu: " + err.split(";")[0]

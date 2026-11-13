@@ -427,9 +427,13 @@ def _permutator(ctx: Context, rep: Report, v: dict) -> None:
     sec = rep.section("Olası adresler")
     for p in perms:
         sec.add(p)
-    status, mx = dns.query(ctx, v["domain"], "MX")
-    rep.summary = (f"{len(perms)} olasılık. " +
-                   ("Domain e-posta alıyor." if mx else "Uyarı: domainin MX kaydı yok."))
+    try:
+        _, mx = dns.query(ctx, v["domain"], "MX")
+        rep.source("DNS (MX)", True)
+        rep.summary = f"{len(perms)} olasılık. " + ("Domain e-posta alıyor." if mx else "Uyarı: domainin MX kaydı yok.")
+    except OsintError as e:  # adres üretimi çevrimdışıdır; MX kontrolü yalnızca ek bilgi
+        rep.source("DNS (MX)", False, str(e).split(": ", 1)[-1])
+        rep.summary = f"{len(perms)} olasılık. (Domainin e-posta alıp almadığı kontrol edilemedi.)"
 
 
 CONTACT_PATHS = ("/", "/iletisim", "/iletisim/", "/contact", "/contact/", "/contact-us", "/hakkimizda",

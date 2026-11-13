@@ -31,7 +31,8 @@ def query(ctx: Context, name: str, rtype: str) -> tuple[str, list[str]]:
         answers = [str(a["data"]) for a in data.get("Answer") or []
                    if isinstance(a, dict) and "data" in a and (want is None or a.get("type") == want)]
         return status, answers
-    raise OsintError(f"DNS sorgusu başarısız: {last_error}")
+    raise OsintError("DNS sorgusu başarısız: DNS-over-HTTPS sunucularına (Cloudflare, Google) ulaşılamadı"
+                     f" ({str(last_error).split(': ', 1)[-1]})")
 
 
 def resolve(ctx: Context, name: str, rtype: str = "A") -> list[str]:
