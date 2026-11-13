@@ -8,7 +8,6 @@ from pwrosint.core.report import Level, Report
 from pwrosint.core.runner import run_action
 from pwrosint.modules import misc, network, person, threat
 
-from conftest import add_dns
 
 
 def run(ctx, tool_id, action_id=None, **values):

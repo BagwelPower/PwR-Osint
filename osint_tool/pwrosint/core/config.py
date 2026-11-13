@@ -32,7 +32,7 @@ class Settings:
     disclaimer_accepted: bool = False
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Settings":
+    def from_dict(cls, data: dict) -> Settings:
         known = {f.name: f for f in fields(cls)}
         clean = {}
         for key, value in data.items():

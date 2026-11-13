@@ -37,6 +37,7 @@ def test_wmn_deep_scan(ctx, http, monkeypatch):
     found = items(report, "Bulunan")
     assert set(found) == {"VarSite", "PostSite"}
     assert found["PostSite"].url == "https://post.example/ali"  # uri_pretty
+    assert found["VarSite"].url == "https://var.example/u/ali"
     assert posted["body"] == '{"u":"ali"}'
     assert "3 site kontrol edildi: 2 profil bulundu, 1 sitede yok" in report.summary  # NSFW ve bozuk atlandı
     assert any("WhatsMyName" in n for n in report.notices)

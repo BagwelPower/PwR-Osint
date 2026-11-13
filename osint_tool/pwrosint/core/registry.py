@@ -4,7 +4,8 @@ yeni bir araç eklemek için bir modülde ``@tool`` ile kaydetmek yeterlidir."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any, Optional
+from collections.abc import Callable
 
 from .context import Context
 from .report import Report

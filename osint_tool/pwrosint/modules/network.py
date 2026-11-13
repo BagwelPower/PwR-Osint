@@ -15,7 +15,7 @@ from ..core import dns, validate
 from ..core.context import Context
 from ..core.errors import OsintError
 from ..core.registry import Action, Field, Tool, register
-from ..core.report import Level, Report, Section
+from ..core.report import Level, Report
 
 # ---------------------------------------------------------------- IP & domain
 
@@ -154,7 +154,7 @@ def _rdap_domain(ctx: Context, rep: Report, domain: str) -> None:
         sec.add("WHOIS", "Bu uzantı için RDAP kaydı alınamadı", level=Level.MUTED)
         sec.note = "Bazı ülke uzantıları (ör. .tr) RDAP sunmaz; ICANN/NIC linklerini kullanın."
         if domain.endswith(".tr"):
-            sec.link("TRABIS (.tr WHOIS)", f"https://www.trabis.gov.tr/")
+            sec.link("TRABIS (.tr WHOIS)", "https://www.trabis.gov.tr/")
         rep.changed()
         return
     for ent in rd.get("entities", []) or []:
@@ -294,7 +294,7 @@ def fetch_certificate(host: str, port: int, timeout: int) -> dict[str, Any]:
             return out
     except ssl.SSLCertVerificationError as e:
         out.update(verified=False, error=e.verify_message or str(e))
-    except (socket.timeout, TimeoutError) as e:
+    except TimeoutError as e:
         raise OsintError(f"{host}:{port} zaman aşımı") from e
     except OSError as e:
         raise OsintError(f"{host}:{port} bağlantı hatası: {e}") from e

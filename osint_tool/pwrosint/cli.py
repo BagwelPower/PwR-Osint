@@ -216,7 +216,7 @@ def settings_menu(settings) -> None:
         idx = int(choice)
         if 1 <= idx <= n:
             key = API_KEY_FIELDS[idx - 1][0]
-            setattr(settings, key, getpass.getpass(f"Yeni değer (boş = sil): ").strip())
+            setattr(settings, key, getpass.getpass("Yeni değer (boş = sil): ").strip())
         elif idx == n + 1:
             try:
                 settings.timeout = max(1, int(Prompt.ask("Saniye", default=str(settings.timeout))))

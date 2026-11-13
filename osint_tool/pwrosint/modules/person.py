@@ -254,10 +254,13 @@ def _username_deep(ctx: Context, rep: Report, v: dict) -> None:
             counts[status] += 1
             done += 1
             if status == FOUND:
-                pretty = (site.get("uri_pretty") or site["uri_check"]).replace("{account}", user)
                 cat = WMN_CATEGORIES.get(site.get("cat", ""), site.get("cat", ""))
                 by_cat[cat] = by_cat.get(cat, 0) + 1
-                found_sec.add(site["name"], f"{cat} · {pretty}", url=pretty, level=Level.OK)
+                if site.get("uri_pretty") or not site.get("post_body"):
+                    pretty = (site.get("uri_pretty") or site["uri_check"]).replace("{account}", user)
+                    found_sec.add(site["name"], f"{cat} · {pretty}", url=pretty, level=Level.OK)
+                else:  # yalnızca API ile doğrulanabilen site: profil sayfası adresi bilinmiyor
+                    found_sec.add(site["name"], f"{cat} · kullanıcı adı bu sitede alınmış", level=Level.OK)
                 rep.summary = f"{done}/{len(sites)} site kontrol edildi · {counts[FOUND]} profil bulundu"
                 rep.changed()
     found_sec.items.sort(key=lambda i: i.label.lower())

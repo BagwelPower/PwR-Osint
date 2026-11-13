@@ -168,3 +168,17 @@ def test_pivot_only_on_plain_values():
                                   url="https://www.shodan.io/host/8.8.8.8")) is None
     assert main.pivot_target(Item("Tür", "Ücretsiz e-posta sağlayıcısı")) is None
     assert main.pivot_target(Item("Domain", "gmail.com"), current_target="gmail.com") is None
+
+
+def test_highlights_show_variety():
+    r = Report("t")
+    typo = r.section("Taklit · Kayıtlı benzer domainler")
+    for n in range(20):
+        typo.add(f"g{n}thub.com", "MX var", level=Level.BAD)
+    r.section("TLS · Sertifika").add("Kalan süre", "5 gün", level=Level.WARN)
+    r.section("Altyapı · Açık portlar").add("Port 3306 internete açık", "MySQL", level=Level.BAD)
+    hl = r.highlights()
+    titles = [t for t, _ in hl]
+    assert "TLS · Sertifika" in titles and "Altyapı · Açık portlar" in titles
+    assert any(i.label == "+17 benzer bulgu" for _, i in hl)
+    assert len(hl) <= 8

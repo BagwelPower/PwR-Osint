@@ -332,7 +332,7 @@ def _urlscan(ctx: Context, rep: Report, v: dict) -> None:
     rep.summary = f"urlscan.io'da {(data or {}).get('total', len(results))} tarama bulundu."
     if not results:
         rep.section("Sonuç").add("Durum", "Bu domain için urlscan.io'da tarama yok", level=Level.MUTED)
-        rep.section("Dış araçlar").link("Yeni tarama başlat", f"https://urlscan.io/")
+        rep.section("Dış araçlar").link("Yeni tarama başlat", "https://urlscan.io/")
         return
     ips = sorted({(r.get("page") or {}).get("ip", "") for r in results} - {""})
     countries = sorted({(r.get("page") or {}).get("country", "") for r in results} - {""})

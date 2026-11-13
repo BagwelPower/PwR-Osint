@@ -3,7 +3,6 @@ from collections import Counter
 
 import pytest
 
-from pwrosint.core.errors import OsintError
 from pwrosint.core.report import Level
 from pwrosint.modules import crypto, media, network, social, threat, web
 

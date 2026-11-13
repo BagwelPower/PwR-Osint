@@ -11,7 +11,8 @@ import json
 import threading
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Callable, Optional
+from typing import Optional
+from collections.abc import Callable
 
 
 class Level(str, Enum):
@@ -44,11 +45,11 @@ class Section:
     note: Optional[str] = None
 
     def add(self, label: str, value: object = "", *, url: Optional[str] = None,
-            level: Level = Level.INFO) -> "Section":
+            level: Level = Level.INFO) -> Section:
         self.items.append(Item(label, "" if value is None else str(value), url, level))
         return self
 
-    def link(self, label: str, url: str) -> "Section":
+    def link(self, label: str, url: str) -> Section:
         return self.add(label, url, url=url)
 
 
@@ -57,7 +58,7 @@ class Report:
     böylece arayüzler uzun sorgularda sonuçları canlı gösterebilir."""
 
     def __init__(self, title: str, target: str = "",
-                 on_change: Optional[Callable[["Report"], None]] = None):
+                 on_change: Optional[Callable[[Report], None]] = None):
         self.title = title
         self.target = target
         self.sections: list[Section] = []
@@ -92,9 +93,12 @@ class Report:
             if message not in self.notices:
                 self.notices.append(message)
 
-    def highlights(self, limit: int = 8) -> list[tuple[str, Item]]:
-        """Rapordaki kritik (BAD) ve dikkat (WARN) bulgular, önem sırasıyla. Aynı etiketin birçok
-        bölümde tekrarı (ör. her sızıntıdaki 'Sızan veriler') tek satırda toplanır."""
+    def highlights(self, limit: int = 8, per_section: int = 3) -> list[tuple[str, Item]]:
+        """Rapordaki kritik (BAD) ve dikkat (WARN) bulgular, önem sırasıyla.
+
+        - Aynı etiketin birçok bölümde tekrarı (her sızıntıdaki 'Sızan veriler') tek satırda toplanır.
+        - Tek bir bölüm kartı doldurmasın diye bölüm başına en fazla ``per_section`` satır gösterilir,
+          kalanı "+N benzer bulgu" olarak özetlenir; böylece farklı alanlardaki bulgular da görünür."""
         out: list[tuple[str, Item]] = []
         for lvl in (Level.BAD, Level.WARN):
             groups: dict[str, list[tuple[str, Item]]] = {}
@@ -102,6 +106,7 @@ class Report:
                 for i in s.items:
                     if i.level == lvl:
                         groups.setdefault(i.label, []).append((s.title, i))
+            per_sec: dict[str, list[tuple[str, Item]]] = {}
             for label, entries in groups.items():
                 if len(entries) > 2:
                     titles = [t.split(" — ")[0] for t, _ in entries]
@@ -109,8 +114,20 @@ class Report:
                         label, f"{len(entries)} kayıtta: " + ", ".join(titles[:6]) + (" …" if len(titles) > 6 else ""),
                         level=lvl)))
                 else:
-                    out.extend(entries)
-        return out[:limit]
+                    for title, item in entries:
+                        per_sec.setdefault(title, []).append((title, item))
+            for title, entries in per_sec.items():
+                out.extend(entries[:per_section])
+                if len(entries) > per_section:
+                    out.append((title, Item(f"+{len(entries) - per_section} benzer bulgu", "", level=lvl)))
+        # Sınırı aşarken farklı bölümleri öne al: önce her bölümün ilk bulgusu, sonra kalanlar.
+        if len(out) > limit:
+            firsts, rest, seen = [], [], set()
+            for t, i in out:
+                (rest if t in seen else firsts).append((t, i))
+                seen.add(t)
+            out = (firsts + rest)[:limit]
+        return out
 
     def error(self, message: str) -> None:
         with self._lock:

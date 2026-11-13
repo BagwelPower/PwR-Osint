@@ -118,8 +118,8 @@ def password_strength(pw: str) -> list[tuple[str, str, Level]]:
     found = [p for p in COMMON_PATTERNS if p in pw.lower()]
     if found:
         bits = min(bits, 28)
-    verdict, level = ((("Çok zayıf", Level.BAD) if bits < 28 else ("Zayıf", Level.BAD) if bits < 40
-                      else ("Orta", Level.WARN) if bits < 60 else ("Güçlü", Level.OK)))
+    verdict, level = (("Çok zayıf", Level.BAD) if bits < 28 else ("Zayıf", Level.BAD) if bits < 40
+                      else ("Orta", Level.WARN) if bits < 60 else ("Güçlü", Level.OK))
     out = [("Değerlendirme", f"{verdict} (~{bits:.0f} bit)", level),
            ("Uzunluk", f"{len(pw)} karakter", Level.OK if len(pw) >= 12 else Level.WARN),
            ("Karakter çeşitleri", ", ".join(n for n, has in classes if has) or "—",
@@ -459,7 +459,7 @@ def _typosquat(ctx: Context, rep: Report, v: dict) -> None:
         sec.add(cand, f"{kind}{' · ' + ip if ip else ''}{' · MX var' if mx else ''}",
                 url=f"https://{cand}", level=Level.BAD if mx else Level.WARN)
     rep.summary = f"{len(cands)} varyasyon denendi, {len(live)} tanesi kayıtlı."
-    rep.section("Dış araçlar").link("dnstwist.it", f"https://dnstwist.it/")
+    rep.section("Dış araçlar").link("dnstwist.it", "https://dnstwist.it/")
 
 
 # ---------------------------------------------------------------- DNS kara listeleri

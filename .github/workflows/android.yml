@@ -32,7 +32,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-      - run: pip install -r requirements-dev.txt "flet==1.1.2"
+      - run: pip install -r requirements-dev.txt "flet==1.1.2" ruff
+      - name: Statik analiz
+        run: ruff check pwrosint main.py tests
       - name: Birim testleri
         run: python -m pytest -q
       - name: Arayüz içe aktarılabiliyor mu

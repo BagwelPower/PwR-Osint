@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, Iterable, TypeVar
+from typing import TypeVar
+from collections.abc import Callable, Iterable
 
 from .config import Settings
 from .errors import Cancelled, MissingApiKey
