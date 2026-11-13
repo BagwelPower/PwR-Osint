@@ -55,7 +55,7 @@ def _fullscan(ctx: Context, rep: Report, v: dict) -> None:
                    "Ayrıntılar aşağıda araç adına göre gruplanmıştır.")
 
 
-register(Tool("fullscan", "Tam Domain Taraması", "8 aracı tek seferde çalıştırır, tek raporda birleştirir",
+register(Tool("fullscan", "Tam Domain Taraması", "8 araç tek raporda: altyapı, DNS, TLS, site, taklit…",
               "TRACK_CHANGES", "Ağ & Domain", [
                   Action("scan", "Tara", (Field("domain", "Domain", "ornek.com", "url", validate.domain),),
                          _fullscan)]))

@@ -1,65 +1,76 @@
 # PwR Osint
 
-**PwR Osint**, Python ile yazılmış açık kaynak bir OSINT (Open Source Intelligence) framework'üdür. Aynı çekirdek üç arayüzden kullanılır:
+**PwR Osint**, telefonda çalışan açık kaynak bir OSINT (açık kaynak istihbarat) ve siber güvenlik keşif aracıdır. Kişi, sosyal medya, domain, IP, web sitesi, sızıntı, kripto para ve fotoğraf için **28 araç ve 41 işlem** sunar. Çoğu API anahtarı gerektirmez.
 
-- 📱 **Android uygulaması**: kart tabanlı sonuçlar, akıllı arama, geçmiş, paylaşım
-- 💻 **Etkileşimli terminal**: renkli menü, Windows / Linux / macOS
-- ⚙️ **Komut satırı**: tek satırlık sorgular, `--json` çıktısı (betiklere bağlanabilir)
+Aynı çekirdek üç arayüzden kullanılır:
+
+- 📱 **Android uygulaması**: akıllı arama, kart tabanlı sonuçlar, rapor kaydetme ve HTML dışa aktarma
+- 💻 **Etkileşimli terminal**: Windows, Linux ve macOS
+- ⚙️ **Komut satırı**: tek satırlık sorgular, `--json` ve `--html` çıktısı
 
 > **Coded by BagwelPower**
 
+| Ana ekran | Akıllı arama | Araç bilgisi | Sonuç |
+|---|---|---|---|
+| ![](../docs/screenshots/1-ana-ekran.png) | ![](../docs/screenshots/2-akilli-arama.png) | ![](../docs/screenshots/3-arac-bilgisi.png) | ![](../docs/screenshots/4-sonuc.png) |
+
 ---
 
-## 🎯 Araçlar
+## ✨ Öne çıkanlar
 
-| Kategori | Araç | Ne yapar | API anahtarı |
+- **Akıllı arama.** Ne yazarsanız (e-posta, IP, domain, URL, telefon, hash, kripto adresi, ASN, VIN, plaka, koordinat, kullanıcı adı) türünü tanır ve ilgili araçları önerir.
+- **Önemli bulgular.** Her raporun başında, bütün bölümlerden toplanmış kritik ve dikkat gerektiren bulgular yer alır: süresi dolan sertifika, internete açık veritabanı portu, sızmış şifre, GPS konumu, e-posta alabilen taklit domain gibi.
+- **Anahtarsız çalışır.** Shodan, VirusTotal, Have I Been Pwned ve Hunter.io anahtarı yoksa ücretsiz yedek kaynaklar kullanılır ve raporda hangi kaynağın kullanıldığı yazılır.
+- **Kaynak durumu.** Limiti dolan ya da yanıt vermeyen kaynaklar sonuçlara karışmaz; raporun altında ayrıca listelenir.
+- **Pivot.** Sonuçtaki bir e-posta, IP ya da domain tek dokunuşla ilgili araçta açılır.
+- **Tam Domain Taraması.** 8 araç tek raporda çalışır: altyapı, DNS, TLS, subdomain, site, urlscan, arşiv, taklit domainler.
+- **Raporlar.** Raporlar cihazda saklanabilir, tek dosyalık HTML olarak dışa aktarılabilir, paylaşılabilir ya da JSON olarak kopyalanabilir.
+- **Tanılama.** Ayarlar → Tanılama, bütün araçları cihazınızda çalıştırıp hangisinin çalıştığını gösterir.
+
+---
+
+## 🧰 Araçlar
+
+| Kategori | Araç | Ne yapar | Anahtar |
 |---|---|---|---|
-| Kişi | **Kullanıcı Adı** | 23 sitede gerçek kontrol (resmî API'ler, "profil yok" metni tespiti, site engellerse yedek kaynak) + giriş isteyen 11 site için manuel kontrol linkleri | — |
-| | **E-posta** | MX / SPF / DMARC analizi, sağlayıcı tespiti, geçici e-posta tespiti, Gravatar · Permutator (Türkçe karakter desteği) · Hunter.io | Hunter (isteğe bağlı) |
-| | **Telefon** | `phonenumbers` ile geçerlilik, tür (mobil/sabit/VoIP), operatör tahsisi, bölge, saat dilimi, formatlar | — |
-| | **İsim / Soyisim** | Google dork'ları, platform aramaları, akademik/kamu kaynakları, kullanıcı adı adayları | — |
-| Sosyal Medya | **GitHub** | Profil, diller, en popüler repolar, organizasyonlar, **commit'lerden sızan e-postalar**, aktif saatler | GitHub token (isteğe bağlı) |
-| | **Reddit** | Hesap yaşı, karma, en çok yazdığı subreddit'ler, aktif saatlerden **saat dilimi tahmini** (Reddit engellerse Arctic Shift arşivi) | — |
-| | **Telegram** | Kullanıcı / kanal / grup ayrımı, abone sayısı, açıklama, fotoğraf | — |
-| | **Mastodon** | Fediverse hesabı, biyografi, sunucunun doğruladığı linkler | — |
-| Ağ & Domain | **IP & Domain** | RDAP WHOIS (kayıt/bitiş tarihi, yeni kayıt uyarısı), konum & ASN, abuse iletişimi, **Shodan InternetDB** ile açık port ve CVE'ler | — |
-| | **DNS** | A, AAAA, CNAME, MX, NS, TXT, SOA, CAA (DNS-over-HTTPS) + SPF/DMARC/CAA değerlendirmesi | — |
-| | **SSL / TLS** | Sertifika doğrulama (bozuk sertifikada bile ayrıntı), kalan süre, SHA-256, protokol, SAN, HTTP güvenlik başlıkları | — |
-| | **Subdomain** | 7 pasif kaynak: crt.sh, CertSpotter, HackerTarget, AlienVault OTX, Anubis, urlscan.io, Wayback + canlılık kontrolü | — |
-| | **Web Arşivi** | Wayback Machine: ilk/son kayıt, ilginç dosyalar (.pdf, .sql, .env…), parametreli URL'ler | — |
-| | **Reverse IP** | Aynı sunucuyu paylaşan diğer domainler | — |
-| | **ASN / BGP** | Ağ sahibi, duyurulan IP blokları, üst sağlayıcılar (RIPEstat) | — |
-| Web | **Site Analizi** | 60+ teknoloji imzası (TR e-ticaret altyapıları dahil), sayfadaki e-posta/telefon/sosyal hesaplar, **Analytics / AdSense / Pixel kimlikleri** (aynı sahibin diğer sitelerine giden iz), robots.txt, sitemap, security.txt | — |
-| | **urlscan.io** | Domainin geçmiş taramaları, görülen IP'ler ve zararlı işaretleri | — |
-| | **Google Dork** | Belgeler, açık dizinler, paneller, sızıntı siteleri, bulut depolama için 12 hazır dork | — |
-| Tehdit | **Sızıntı Kontrolü** | Şifre sızıntısı (k-anonimlik: şifre cihazdan çıkmaz) · e-posta sızıntıları | HIBP (e-posta için) |
-| | **Shodan** | Host detayı, servisler, zafiyetler · arama | Shodan |
-| | **VirusTotal** | Domain, IP ve dosya hash'i itibarı, işaretleyen motorlar | VirusTotal |
-| | **Oltalama & Taklit** | Domainin ~100+ benzer varyasyonunu üretip **kayıtlı olanları** bulur (MX'i olanlar kırmızı) · OpenPhish akışında arama | — |
-| | **Kara Liste** | IP'nin 10 spam / DNSBL listesindeki durumu | — |
-| Kripto | **Kripto Adres** | Bitcoin (Legacy/SegWit/Taproot, sağlama doğrulamalı) ve Ethereum: bakiye, USD/TL karşılığı, işlem geçmişi | — |
-| Görsel & Dosya | **Görsel Analizi** | URL'den görsel: **EXIF (cihaz, çekim zamanı, seri no) ve GPS konumu**, boyut, hash'ler, Google Lens / Yandex / Bing / TinEye tersine arama | — |
-| Diğer | **Konum** | Koordinat → adres (OpenStreetMap), harita/Street View linkleri · BSSID/MAC → üretici, rastgele MAC tespiti, WiGLE konumu | WiGLE (isteğe bağlı) |
-| | **Araç** | VIN: yapı, kontrol hanesi, model yılı, NHTSA çözümleme · TR plaka: il ve format doğrulama | — |
+| **Kişi** | Kullanıcı Adı | Hızlı tarama 23 sitede resmî API'lerle çalışır. Derin tarama, [WhatsMyName](https://github.com/WebBreacher/WhatsMyName) veri setiyle **650'den fazla** sitede yaklaşık 15 saniye sürer. | — |
+| | E-posta | MX, SPF ve DMARC; Gravatar profili ve doğrulanmış hesaplar; bilinen sızıntılar; kurumsal domainin yaşı. Ad soyaddan adres üretir, domainin sitesindeki adresleri toplar. | Hunter (isteğe bağlı) |
+| | Telefon | Geçerlilik, tür, operatör tahsisi, bölge, saat dilimi, biçimler (libphonenumber). | — |
+| | İsim / Soyisim | GitHub kullanıcıları, OpenAlex akademik yazarları, ORCID ve Wikidata kayıtları, hedefli Google dork'ları. | — |
+| **Sosyal Medya** | GitHub | Profil, diller, popüler repolar, organizasyonlar, **commit'lerden sızan e-postalar**, aktif saatler. | Token (isteğe bağlı) |
+| | Reddit | Hesap yaşı, karma, subreddit'ler, aktif saatlerden **saat dilimi tahmini**. Reddit erişimi engellerse herkese açık arşiv kullanılır. | — |
+| | Telegram | Kullanıcı, kanal, grup ya da bot olduğu; abone sayısı, açıklama. | — |
+| | Mastodon | Fediverse hesabı, sunucunun doğruladığı linkler. | — |
+| **Ağ & Domain** | Tam Domain Taraması | Aşağıdaki 8 aracı tek raporda birleştirir. | — |
+| | IP & Domain | RDAP WHOIS, konum ve ASN, abuse iletişimi, açık portlar ve **riskli servisler**, yazılımlar, CVE'ler. | — |
+| | DNS | Bütün kayıt türleri ile SPF, DMARC ve CAA değerlendirmesi, kullanılan servisler. | — |
+| | SSL / TLS | Sertifika doğrulama ve kalan süre, protokol, SAN, HTTP güvenlik başlıkları. | — |
+| | Subdomain | 7 pasif kaynak (crt.sh, CertSpotter, HackerTarget, OTX, Anubis, urlscan, Wayback) ve canlılık kontrolü. | — |
+| | Web Arşivi | Wayback Machine'deki ilk ve son kayıt, arşivlenmiş ilginç dosyalar ve parametreli URL'ler. | — |
+| | Reverse IP | Aynı sunucudaki diğer siteler. | — |
+| | ASN / BGP | Ağ sahibi, IP blokları, üst sağlayıcılar (RIPEstat). | — |
+| **Web** | Site Analizi | yaklaşık 60 teknoloji imzası; sayfadaki e-posta, telefon ve sosyal hesaplar; **Analytics, AdSense ve Pixel kimlikleri**; robots.txt, sitemap, security.txt. | — |
+| | urlscan.io | Geçmiş taramalar, görülen IP'ler, zararlı işaretleri. | — |
+| | Google Dork | Belgeler, açık dizinler, paneller ve sızıntı siteleri için 12 hazır sorgu. | — |
+| **Tehdit İstihbaratı** | Sızıntı Kontrolü | E-postanın bulunduğu sızıntılar, sızan veri türleri, şifre saklama riski. Şifre sızıntısı k-anonimlikle kontrol edilir, şifre cihazdan çıkmaz. Şifre gücünü de ölçer. | HIBP (isteğe bağlı) |
+| | Shodan | Açık portlar, yazılımlar, CVE'ler. Banner bilgisi ve arama için anahtar gerekir. | Arama için |
+| | Tehdit İtibarı | Domain, IP ya da dosya hash'i için AlienVault OTX tehdit raporları ve zararlı aileleri; anahtarla VirusTotal motorları. | VT (isteğe bağlı) |
+| | Oltalama & Taklit | Domainin yüzlerce benzerini üretir, **kayıtlı ve e-posta alabilen** taklitleri bulur; OpenPhish akışında arar. | — |
+| | Kara Liste | IP'nin 10 DNSBL listesindeki durumu. | — |
+| **Kripto** | Kripto Adres | Bitcoin (Legacy, SegWit, Taproot; sağlama toplamı doğrulamalı) ve Ethereum: bakiye, USD ve TL karşılığı, işlemler. | — |
+| **Görsel & Dosya** | Görsel Analizi | **Cihazdan ya da URL'den** fotoğrafın EXIF bilgisi (cihaz, tarih, seri no, düzenleme izi), **GPS konumu ve adresi**; tersine görsel arama. | — |
+| **Diğer** | Konum | Koordinattan adres ve harita linkleri; MAC adresinden üretici, rastgele MAC tespiti, WiGLE konumu. | WiGLE (isteğe bağlı) |
+| | Araç | VIN için yapı, kontrol hanesi ve NHTSA çözümlemesi; Türk plakası için il ve biçim doğrulaması. | — |
 
-Anahtarsız araçlar kurulumdan hemen sonra çalışır.
+Her aracın uygulamadaki **"Bu araç ne yapar?"** kartında kaynakları ve sınırları ayrıca yazar.
 
 ---
 
 ## 📱 Android
 
-### APK'yı indir
-Her push'ta GitHub Actions testleri çalıştırır ve APK'yı derler:
-**Actions → CI & Android APK → son çalıştırma → Artifacts → `PwR-Osint-apk`** (zip içinde `.apk`).
-`v2.0.0` gibi bir tag push'lanırsa APK doğrudan **Releases** sayfasına da eklenir.
+**APK'yı indirmek için:** GitHub'da **Actions → CI & Android APK** sayfasında son başarılı çalıştırmayı açın, **Artifacts** bölümünden `PwR-Osint-apk` dosyasını indirin, zip'i açıp `.apk`'yı kurun. Kurulumda "bilinmeyen kaynaklardan yükleme" iznini bir kerelik vermeniz gerekir.
 
-Kurulum: APK'ya dokunun ve "bilinmeyen kaynaklardan yükleme" iznini bir kerelik verin.
-
-### Özellikler
-- **Akıllı arama**: e-posta, IP, domain, URL, görsel linki, telefon, hash, Bitcoin/Ethereum adresi, ASN, VIN, plaka, koordinat ya da kullanıcı adı yazın; uygulama türünü tanıyıp uygun aracı önerir ve çalıştırır.
-- Sonuçlar renkli kartlarda gösterilir (yeşil = iyi, sarı = dikkat, kırmızı = risk). Linke dokunmak onu açar, satıra uzun basmak kopyalar.
-- Rapor metin veya JSON olarak kopyalanabilir ya da paylaşılabilir. Uzun sorgular iptal edilebilir.
-- Son 30 arama saklanır (şifreler asla saklanmaz).
+**İlk kurulumdan sonra:** **Ayarlar → Tanılama → Testi başlat** ile araçların cihazınızda çalıştığını kontrol edebilirsiniz. Bir sorun görürseniz sonucu kopyalayıp bir issue açın.
 
 ---
 
@@ -74,38 +85,33 @@ pip install -r requirements.txt
 ```
 
 ```bash
-python osint_tool.py                     # etkileşimli menü
-python -m pwrosint --list                # tüm araçlar ve girdileri
-python -m pwrosint dns ornek.com         # tek komut
-python -m pwrosint email permutate Ahmet Yılmaz ornek.com
-python -m pwrosint host 8.8.8.8 --json   # makine okunur çıktı
+python osint_tool.py                                  # etkileşimli menü
+python -m pwrosint --list                             # tüm araçlar ve girdileri
+python -m pwrosint fullscan ornek.com --html rapor.html
+python -m pwrosint username deep kullanici_adi
+python -m pwrosint image file ~/foto.jpg
+python -m pwrosint host 8.8.8.8 --json                # makine okunur çıktı
 ```
 
-Sorgu sürerken `Ctrl+C` sorguyu iptal eder, programı kapatmaz.
+Sorgu sürerken `Ctrl+C` yalnızca sorguyu iptal eder, programı kapatmaz.
 
 ---
 
-## ⚙️ Yapılandırma
+## ⚙️ API anahtarları (hepsi isteğe bağlı)
 
-API anahtarları uygulamanın **Ayarlar** ekranından veya terminal menüsündeki **A** seçeneğinden girilir. Dosya konumu:
+Anahtarlar uygulamada **Ayarlar** ekranından, terminalde ise menüdeki **A** seçeneğinden girilir. Yalnızca cihazınızda saklanır ve yalnızca ilgili servise gönderilir.
 
-| Ortam | Konum |
-|---|---|
-| Android | Uygulamanın özel veri dizini |
-| Terminal | `~/.pwr-osint/config.json` (çalışma dizininde `config.json` varsa o kullanılır) |
-| Özel | `PWR_OSINT_CONFIG=/yol/config.json` |
+| Servis | Ne kazandırır | Adres |
+|---|---|---|
+| Shodan | Servis banner'ları, konum, Shodan araması | https://account.shodan.io/ |
+| VirusTotal | 70'ten fazla antivirüs motorunun kararı | https://www.virustotal.com/gui/my-apikey |
+| Have I Been Pwned | HIBP sızıntı veritabanı | https://haveibeenpwned.com/API/Key |
+| Hunter.io | Domain için doğrulanmış e-posta adresleri | https://hunter.io/api-keys |
+| GitHub | Saatte 60 yerine 5000 istek | https://github.com/settings/tokens |
+| WiGLE | Wi-Fi ağlarının konumu | https://wigle.net/account |
+| IPinfo | Daha yüksek istek limiti | https://ipinfo.io/account/token |
 
-Şablon için `config.json.example` dosyasına bakın. Dosya, sahibinden başka kimsenin okuyamayacağı izinlerle (`600`) yazılır.
-
-| Servis | Anahtar adresi |
-|---|---|
-| Shodan | https://account.shodan.io/ |
-| VirusTotal | https://www.virustotal.com/gui/my-apikey |
-| Hunter.io | https://hunter.io/api-keys |
-| Have I Been Pwned | https://haveibeenpwned.com/API/Key |
-| WiGLE | https://wigle.net/account |
-| GitHub (isteğe bağlı, limiti 60 → 5000/saat yapar) | https://github.com/settings/tokens |
-| IPinfo (isteğe bağlı, limit artırır) | https://ipinfo.io/account/token |
+Ayar dosyası konumu: Android'de uygulamanın özel dizini; terminalde `~/.pwr-osint/config.json` (çalışma dizininde `config.json` varsa o kullanılır) ya da `PWR_OSINT_CONFIG` ile belirttiğiniz yol.
 
 ---
 
@@ -114,37 +120,42 @@ API anahtarları uygulamanın **Ayarlar** ekranından veya terminal menüsündek
 ```
 osint_tool/
 ├── main.py                 # Android / mobil arayüz (Flet)
-├── osint_tool.py           # Terminal başlatıcı (geriye dönük uyumluluk)
+├── osint_tool.py           # Terminal başlatıcı
 ├── pwrosint/
 │   ├── cli.py              # Terminal arayüzü (rich) + komut satırı
 │   ├── core/
-│   │   ├── report.py       # Yapılandırılmış sonuç modeli (Report → Section → Item)
-│   │   ├── registry.py     # Araç / işlem / alan tanımları
-│   │   ├── runner.py       # Çalıştırma, hata ve iptal yönetimi
-│   │   ├── http.py         # Ortak HTTP oturumu, yeniden deneme, okunur hatalar
-│   │   ├── dns.py          # DNS-over-HTTPS (Cloudflare → Google yedekli)
-│   │   ├── validate.py     # Girdi doğrulama ve normalleştirme
+│   │   ├── report.py       # Sonuç modeli: bölümler, önemli bulgular, kaynak durumu
+│   │   ├── registry.py     # Araç / işlem / alan tanımları, kategoriler
+│   │   ├── runner.py       # Çalıştırma, hata, iptal ve eksik anahtar yönetimi
+│   │   ├── http.py         # Ortak HTTP: yeniden deneme, yanıt biçimi denetimi
+│   │   ├── dns.py          # DNS-over-HTTPS (Cloudflare → Google)
 │   │   ├── detect.py       # Akıllı arama
-│   │   ├── history.py      # Son aramalar
-│   │   └── config.py       # Ayarlar
-│   └── modules/            # person, social, network, web, threat, crypto, media, misc
-└── tests/                  # birim testleri (sahte HTTP) + tests/live (gerçek servisler)
+│   │   ├── store.py        # Kayıtlı raporlar, HTML dışa aktarma
+│   │   ├── ports.py        # Riskli port sınıflandırması
+│   │   └── validate.py, config.py, history.py, samples.py
+│   └── modules/            # person, social, network, web, threat, crypto, media, misc, fullscan, docs
+└── tests/                  # birim, sağlamlık ve canlı testler
 ```
 
-Modüller ekrana hiçbir şey yazmaz, bir `Report` doldurur. Terminal, Android ve JSON çıktısı aynı raporu kendi biçiminde gösterir. Yeni bir araç eklemek için bir modülde `register(Tool(...))` çağırmak yeterlidir; menüler ve akıllı arama otomatik güncellenir.
+Modüller ekrana bir şey yazmaz; bir `Report` doldurur. Terminal, Android, JSON ve HTML çıktısı aynı raporu kendi biçiminde gösterir. Yeni bir araç eklemek için bir modülde `register(Tool(...))` çağırmak ve `docs.py`'ye açıklamasını eklemek yeterlidir; menüler, akıllı arama ve tanılama otomatik olarak güncellenir.
 
-### Testler
+### Kalite güvencesi
+
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest                        # birim + sağlamlık testleri (her araç 6 bozuk-ağ senaryosunda), internet gerekmez
-PWR_LIVE=1 python -m pytest tests/live  # her aracın her işlemi gerçek servislere karşı
+python -m pytest                        # 380+ birim ve sağlamlık testi, internet gerekmez
+PWR_LIVE=1 python -m pytest tests/live  # her işlem gerçek servislere karşı
 ```
+
+- **Sağlamlık testi:** Her işlemi altı bozuk ağ senaryosunda çalıştırır (kopuk ağ, boş yanıt, HTML, 500, 403…). Hiçbir araç çökmemeli, kullanıcıya her zaman okunur bir mesaj vermelidir.
+- **Canlı testler:** CI'da her push'ta, bütün işlemler gerçek servislere karşı çalıştırılır.
+- **Statik analiz:** `ruff` ile yapılır. Testler geçmeden APK derlenmez.
 
 ---
 
 ## ⚠️ Yasal uyarı
 
-Bu araç **yalnızca eğitim, araştırma ve kendi sistemlerinizdeki ya da yazılı izin aldığınız hedeflerdeki güvenlik testleri** için tasarlanmıştır.
+Bu araç **yalnızca eğitim, araştırma, gazetecilik ve kendi sistemlerinizdeki ya da yazılı izin aldığınız hedeflerdeki güvenlik testleri** için tasarlanmıştır. Yalnızca herkese açık kaynakları sorgular; hedefe port taraması ya da saldırı niteliğinde istek göndermez.
 
 - Başkalarının kişisel verilerini izinsiz toplamayın, saklamayın, paylaşmayın.
 - Yerel yasalara uyun: Türkiye'de KVKK ve TCK 243–245, AB'de GDPR.
@@ -154,6 +165,6 @@ Bu araç **yalnızca eğitim, araştırma ve kendi sistemlerinizdeki ya da yazı
 
 ---
 
-## 📜 Lisans
+## 📜 Lisans ve teşekkür
 
-MIT. Ayrıntılar için `LICENSE` dosyasına bakın.
+MIT, ayrıntılar için `LICENSE` dosyasına bakın. Derin kullanıcı adı taramasının site listesi [WhatsMyName](https://github.com/WebBreacher/WhatsMyName) projesinden gelir (CC BY-SA 4.0, Micah Hoffman ve katkıcılar). Telefon analizi Google'ın [libphonenumber](https://github.com/google/libphonenumber) verisini kullanır.

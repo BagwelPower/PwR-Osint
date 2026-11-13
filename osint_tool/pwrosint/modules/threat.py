@@ -354,18 +354,18 @@ def _vt_file(ctx: Context, rep: Report, v: dict) -> None:
 IP = Field("ip", "IP adresi", "8.8.8.8", "number", validate.ip)
 DOMAIN = Field("domain", "Domain", "ornek.com", "url", validate.domain)
 
-register(Tool("hibp", "Sızıntı Kontrolü", "Have I Been Pwned: e-posta ve şifre", "GPP_MAYBE",
+register(Tool("hibp", "Sızıntı Kontrolü", "E-posta sızıntı ayrıntıları, şifre sızıntısı ve gücü", "GPP_MAYBE",
               "Tehdit İstihbaratı", [
                   Action("password", "Şifre", (Field("password", "Şifre", "Cihazdan çıkmaz", "password",
                                                      lambda s: s),), _hibp_password),
                   Action("email", "E-posta", (Field("email", "E-posta", "kisi@ornek.com", "email",
                                                     validate.email),), _hibp_email,
                          better_with="haveibeenpwned_api_key")]))
-register(Tool("shodan", "Shodan", "Host detayı ve arama", "RADAR", "Tehdit İstihbaratı", [
+register(Tool("shodan", "Shodan", "Açık portlar, yazılımlar, CVE'ler (anahtarsız)", "RADAR", "Tehdit İstihbaratı", [
     Action("host", "Host", (IP,), _shodan_host, better_with="shodan_api_key"),
     Action("search", "Arama", (Field("query", "Sorgu", "port:22 country:TR", parse=validate.text),),
            _shodan_search, needs_key="shodan_api_key")]))
-register(Tool("virustotal", "VirusTotal", "Domain, IP ve dosya itibarı", "SHIELD", "Tehdit İstihbaratı", [
+register(Tool("virustotal", "Tehdit İtibarı", "Domain, IP, dosya hash: OTX / VirusTotal", "SHIELD", "Tehdit İstihbaratı", [
     Action("domain", "Domain", (DOMAIN,), _vt_domain, better_with="virustotal_api_key"),
     Action("ip", "IP", (IP,), _vt_ip, better_with="virustotal_api_key"),
     Action("file", "Dosya hash", (Field("hash", "MD5 / SHA-1 / SHA-256", "44d88612fea8a8f36de82e1278abb02f",

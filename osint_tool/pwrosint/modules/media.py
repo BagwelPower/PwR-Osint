@@ -270,7 +270,7 @@ def analyze_bytes(ctx: Context, rep: Report, data: bytes, headers: dict, url: Op
         rev.link("TinEye", "https://tineye.com/")
 
 
-register(Tool("image", "Görsel Analizi", "EXIF, GPS konumu, hash, tersine arama", "PHOTO_CAMERA", "Görsel & Dosya", [
+register(Tool("image", "Görsel Analizi", "Fotoğraftan cihaz, tarih, GPS konumu ve adres", "PHOTO_CAMERA", "Görsel & Dosya", [
     Action("file", "Cihazdan fotoğraf", (Field("file", "Fotoğraf", "Fotoğraf seçin", "file", local_image),),
            _image_file),
     Action("analyze", "URL'den", (Field("url", "Görsel adresi (URL)", "https://…/foto.jpg", "url", parse_url),),

@@ -85,7 +85,7 @@ TOOL_DOCS: dict[str, tuple[str, tuple[str, ...], str]] = {
         "verisinden gösterir.",
         ("RIPEstat",), ""),
     "site": (
-        "Sitenin kullandığı 60+ teknolojiyi, sayfadaki e-posta, telefon ve sosyal medya hesaplarını ve aynı "
+        "Sitenin kullandığı yaklaşık 60 teknolojiyi, sayfadaki e-posta, telefon ve sosyal medya hesaplarını ve aynı "
         "sahibin diğer sitelerine giden Analytics/AdSense/Pixel kimliklerini çıkarır; robots.txt, sitemap ve "
         "security.txt dosyalarını okur.",
         ("Hedef site (tek sayfa isteği)",), ""),

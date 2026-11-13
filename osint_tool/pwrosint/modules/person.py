@@ -682,13 +682,13 @@ def _name_links(rep: Report, name: str) -> None:
 
 DOMAIN = Field("domain", "Domain", "ornek.com", "url", validate.domain)
 
-register(Tool("username", "Kullanıcı Adı", f"{len(SITES)} platformda profil taraması",
+register(Tool("username", "Kullanıcı Adı", "Hızlı tarama + 650+ sitede derin tarama",
               "PERSON_SEARCH", "Kişi", [
                   Action("scan", "Hızlı tara", (Field("username", "Kullanıcı adı", "ornek_kullanici",
                                                        parse=validate.username),), _username),
                   Action("deep", "Derin tara (600+ site)", (Field("username", "Kullanıcı adı", "ornek_kullanici",
                                                                   parse=validate.username),), _username_deep)]))
-register(Tool("email", "E-posta", "MX/SPF/DMARC, Gravatar, permutator",
+register(Tool("email", "E-posta", "Gravatar, sızıntılar, MX/SPF/DMARC, domain adresleri",
               "ALTERNATE_EMAIL", "Kişi", [
                   Action("analyze", "Analiz", (Field("email", "E-posta", "kisi@ornek.com", "email",
                                                      validate.email),), _email),
@@ -701,5 +701,5 @@ register(Tool("phone", "Telefon", "Geçerlilik, operatör, bölge, formatlar",
               "PHONE_ANDROID", "Kişi", [
                   Action("analyze", "Analiz", (Field("phone", "Telefon", "+90 5xx xxx xx xx", "phone",
                                                      lambda s: validate.text(s, 4)),), _phone)]))
-register(Tool("name", "İsim / Soyisim", "Dork'lar ve arama linkleri", "BADGE", "Kişi", [
+register(Tool("name", "İsim / Soyisim", "GitHub, ORCID, OpenAlex, Wikidata kayıtları", "BADGE", "Kişi", [
     Action("search", "Ara", (Field("name", "Ad Soyad", "Ad Soyad", "name", validate.text),), _name)]))

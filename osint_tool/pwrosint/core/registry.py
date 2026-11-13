@@ -80,7 +80,8 @@ def all_tools() -> list[Tool]:
     apply(_TOOLS.values())
 
     order = {c: i for i, c in enumerate(CATEGORIES)}
-    return sorted(_TOOLS.values(), key=lambda t: order.get(t.category, 99))
+    featured = {"fullscan"}  # kategorisinin en kapsamlı aracı başta görünsün
+    return sorted(_TOOLS.values(), key=lambda t: (order.get(t.category, 99), t.id not in featured))
 
 
 def get_tool(tool_id: str) -> Tool:

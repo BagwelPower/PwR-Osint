@@ -81,7 +81,7 @@ jobs:
           for attempt in 1 2; do
             flet build apk --yes --verbose \
               --exclude tests osint_tool.py requirements.txt requirements-dev.txt config.json.example \
-              --build-version "2.1.${{ github.run_number }}" --build-number "${{ github.run_number }}" && exit 0
+              --build-version "2.2.${{ github.run_number }}" --build-number "${{ github.run_number }}" && exit 0
             echo "::warning::APK derlemesi başarısız (deneme $attempt), önbellek temizlenip tekrar deneniyor"
             rm -rf build ~/.gradle/caches/*/download-* 2>/dev/null || true
           done
