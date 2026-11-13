@@ -87,7 +87,8 @@ def test_email_survives_dns_outage(ctx, http):
     http.add("https://www.gravatar.com/avatar/", "", status=404)
     report = run(ctx, "email", email="ali@mailinator.com")
     assert items(report, "Temel")["Tür"].level == Level.BAD
-    assert items(report, "Posta")["DNS"].level == Level.MUTED
+    assert items(report, "Posta")["Durum"].level == Level.MUTED
+    assert ("DNS", False) in [(n, ok) for n, ok, _ in report.sources]
 
 
 def test_permutations_transliterate_and_dedupe():
@@ -206,7 +207,7 @@ def test_subdomains_merge_sources(ctx, http):
     http.add("https://cloudflare-dns.com/dns-query", {"Status": 0, "Answer": [{"type": 1, "data": "1.1.1.1"}]},
              match_params={"name": "www.ornek.com"})
     report = run(ctx, "subdomain", domain="ornek.com")
-    assert items(report, "Kaynaklar")["HackerTarget"].level == Level.MUTED
+    assert ("HackerTarget", False) in [(n, ok) for n, ok, _ in report.sources]
     assert list(items(report, "Aktif")) == ["www.ornek.com"]
     assert set(items(report, "Çözülmeyen")) == {"dev.ornek.com", "mail.ornek.com"}
     assert report.summary.startswith("3 benzersiz")

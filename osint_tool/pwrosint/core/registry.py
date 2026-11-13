@@ -28,7 +28,8 @@ class Action:
     title: str
     fields: tuple[Field, ...]
     run: Runner
-    needs_key: Optional[str] = None  # ayar adı; arayüz uyarı gösterebilir
+    needs_key: Optional[str] = None   # bu anahtar olmadan işlem hiç çalışmaz
+    better_with: Optional[str] = None  # anahtar olmadan yedek kaynakla çalışır, anahtarla daha ayrıntılı
 
 
 @dataclass
@@ -39,6 +40,9 @@ class Tool:
     icon: str  # Material ikon adı (ör. "DNS"); arayüz kendi ikon setine çevirir
     category: str
     actions: list[Action] = field(default_factory=list)
+    description: str = ""          # aracın ne yaptığı, ne işe yaradığı
+    sources: tuple[str, ...] = ()  # sorgulanan servisler
+    limits: str = ""               # bilinmesi gereken sınırlar
 
     def action(self, action_id: str) -> Action:
         for a in self.actions:
@@ -47,8 +51,17 @@ class Tool:
         raise KeyError(action_id)
 
 
-CATEGORIES = ["Kişi", "Sosyal Medya", "Ağ & Domain", "Web", "Tehdit İstihbaratı", "Kripto",
-              "Görsel & Dosya", "Diğer"]
+CATEGORY_INFO = {
+    "Kişi": "Kullanıcı adı, e-posta, telefon ve isimden kişinin dijital izini çıkarır.",
+    "Sosyal Medya": "Platform hesaplarının ayrıntılı analizi: aktivite, bağlantılar, sızan bilgiler.",
+    "Ağ & Domain": "Domain ve IP altyapısı: WHOIS, DNS, sertifika, alt alan adları, ağ sahibi.",
+    "Web": "Web sitelerinin teknolojisi, iletişim bilgileri, gizli yolları ve geçmiş taramaları.",
+    "Tehdit İstihbaratı": "Sızıntılar, zararlı itibarı, oltalama domainleri ve kara listeler.",
+    "Kripto": "Kripto para adreslerinin bakiye ve işlem geçmişi.",
+    "Görsel & Dosya": "Fotoğraflardaki gizli meta veriler (cihaz, tarih, GPS) ve tersine arama.",
+    "Diğer": "Konum, Wi-Fi/MAC ve araç (VIN, plaka) sorguları.",
+}
+CATEGORIES = list(CATEGORY_INFO)
 
 _TOOLS: dict[str, Tool] = {}
 

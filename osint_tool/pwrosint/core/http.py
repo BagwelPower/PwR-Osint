@@ -41,6 +41,17 @@ class Http:
         except requests.RequestException as e:
             raise OsintError(f"{_host(url)}: {e}") from e
 
+    def post(self, url: str, **kw: Any) -> requests.Response:
+        kw.setdefault("timeout", self.timeout)
+        try:
+            return self.session.post(url, **kw)
+        except requests.exceptions.SSLError as e:
+            raise OsintError(f"{_host(url)}: SSL sertifikası doğrulanamadı") from e
+        except requests.Timeout as e:
+            raise OsintError(f"{_host(url)}: zaman aşımı ({kw['timeout']} sn)") from e
+        except requests.RequestException as e:
+            raise OsintError(f"{_host(url)}: bağlantı kurulamadı") from e
+
     def json(self, url: str, *, ok: tuple[int, ...] = (200,), expect: type = dict, **kw: Any) -> Any:
         """GET + JSON. ``ok`` dışındaki durum kodlarında, JSON olmayan ya da beklenen
         türde (``dict``/``list``) olmayan yanıtlarda OsintError fırlatır. Başarılı bir

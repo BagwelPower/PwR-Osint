@@ -2,6 +2,7 @@
 
 SAMPLES = {
     ("username", "scan"): {"username": "torvalds"},
+    ("username", "deep"): {"username": "torvalds"},
     ("email", "analyze"): {"email": "test@gmail.com"},
     ("email", "permutate"): {"first": "Ahmet", "last": "Yılmaz", "domain": "github.com"},
     ("email", "hunter"): {"domain": "github.com"},
@@ -42,5 +43,4 @@ SAMPLES = {
 }
 
 # Bu işlemler API anahtarı ister; anahtar yoksa "anahtar gerekli" mesajı beklenen davranıştır.
-NEEDS_KEY = {("email", "hunter"), ("hibp", "email"), ("shodan", "host"), ("shodan", "search"),
-             ("virustotal", "domain"), ("virustotal", "ip"), ("virustotal", "file")}
+NEEDS_KEY = {("shodan", "search")}

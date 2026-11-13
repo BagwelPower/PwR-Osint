@@ -28,7 +28,7 @@ def test_real_response(tool, action):
     print(report.to_text())
     assert not [e for e in report.errors if e.startswith("Beklenmeyen hata")]
     if (tool.id, action.id) in NEEDS_KEY:
-        assert report.errors and "API anahtarı gerekli" in report.errors[0]
+        assert report.missing_key and not report.errors
         return
     assert not report.errors, report.errors
     assert sum(len(s.items) for s in report.sections) >= 2, "gerçek veri dönmedi"

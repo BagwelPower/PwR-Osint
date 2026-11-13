@@ -134,6 +134,134 @@ def _username(ctx: Context, rep: Report, v: dict) -> None:
                    f"{len(missing.items)} yok, {len(unknown.items)} belirsiz")
 
 
+# ---------------------------------------------------------------- WhatsMyName (derin tarama)
+
+WMN_URL = "https://raw.githubusercontent.com/WebBreacher/WhatsMyName/main/wmn-data.json"
+WMN_MAX_AGE = 7 * 24 * 3600
+WMN_CATEGORIES = {
+    "social": "Sosyal medya", "gaming": "Oyun", "tech": "Teknoloji", "hobby": "Hobi", "coding": "Yazılım",
+    "misc": "Diğer", "finance": "Finans", "business": "İş", "music": "Müzik", "shopping": "Alışveriş",
+    "images": "Görsel", "blog": "Blog", "art": "Sanat", "dating": "Arkadaşlık", "video": "Video",
+    "political": "Siyaset", "news": "Haber", "archived": "Arşiv", "health": "Sağlık",
+}
+
+
+def load_wmn(ctx: Context) -> tuple[list[dict], str]:
+    """WhatsMyName veri setini önbellekten ya da GitHub'dan yükler: (siteler, kaynak açıklaması)."""
+    import json as _json
+    import os
+    import time
+    from ..core.config import config_path
+
+    cache = config_path().with_name("wmn-data.json")
+    cached = None
+    try:
+        if cache.exists():
+            cached = _json.loads(cache.read_text(encoding="utf-8"))
+            if time.time() - cache.stat().st_mtime < WMN_MAX_AGE:
+                return _wmn_sites(cached), "önbellek"
+    except (OSError, ValueError):
+        cached = None
+    try:
+        data = ctx.http.json(WMN_URL, timeout=max(20, ctx.settings.timeout))
+        sites = _wmn_sites(data)
+        if not sites:
+            raise OsintError("WhatsMyName: boş veri")
+        try:
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            tmp = cache.with_suffix(".tmp")
+            tmp.write_text(_json.dumps(data), encoding="utf-8")
+            os.replace(tmp, cache)
+        except OSError:
+            pass
+        return sites, "güncel"
+    except OsintError:
+        if cached:
+            return _wmn_sites(cached), "eski önbellek"
+        raise
+
+
+def _wmn_sites(data) -> list[dict]:
+    sites = (data or {}).get("sites") if isinstance(data, dict) else None
+    out = []
+    for s in sites or []:
+        if not isinstance(s, dict) or s.get("valid") is False or not s.get("uri_check"):
+            continue
+        if "{account}" not in str(s["uri_check"]) + str(s.get("post_body", "")):
+            continue
+        if s.get("cat") == "xx NSFW xx":
+            continue
+        out.append(s)
+    return out
+
+
+def wmn_check(ctx: Context, site: dict, user: str, timeout: int = 8) -> tuple[str, str]:
+    name = user
+    for ch in site.get("strip_bad_char") or "":
+        name = name.replace(ch, "")
+    acct = quote(name, safe="")
+    url = site["uri_check"].replace("{account}", acct)
+    headers = {"User-Agent": BROWSER_UA, **(site.get("headers") or {})}
+    try:
+        if site.get("post_body"):
+            resp = ctx.http.post(url, data=site["post_body"].replace("{account}", name), headers=headers,
+                                 timeout=timeout, allow_redirects=True)
+        else:
+            resp = ctx.http.get(url, headers=headers, timeout=timeout, allow_redirects=True)
+    except OsintError as e:
+        return UNKNOWN, str(e).split(": ", 1)[-1]
+    body = resp.text if len(resp.content) < 3_000_000 else resp.text[:3_000_000]
+    if resp.status_code == site.get("e_code") and site.get("e_string", "") in body:
+        return FOUND, ""
+    if resp.status_code == site.get("m_code") and site.get("m_string", "") in body:
+        return MISSING, ""
+    if resp.status_code == site.get("m_code") and site.get("m_code") != site.get("e_code"):
+        return MISSING, ""
+    return UNKNOWN, f"HTTP {resp.status_code}"
+
+
+def _username_deep(ctx: Context, rep: Report, v: dict) -> None:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    user = v["username"]
+    sites, origin = load_wmn(ctx)
+    rep.source("WhatsMyName", True, f"{len(sites)} site ({origin})")
+    found_sec = rep.section("Bulunan profiller")
+    counts = {FOUND: 0, MISSING: 0, UNKNOWN: 0}
+    by_cat: dict[str, int] = {}
+    done = 0
+    with ThreadPoolExecutor(max_workers=max(16, ctx.settings.max_workers * 2)) as pool:
+        futures = {pool.submit(wmn_check, ctx, s, user): s for s in sites}
+        for fut in as_completed(futures):
+            if ctx.cancel_event.is_set():
+                for f in futures:
+                    f.cancel()
+                rep.notice(f"Tarama iptal edildi ({done}/{len(sites)} site kontrol edilmişti).")
+                break
+            site = futures[fut]
+            status, why = fut.result()
+            counts[status] += 1
+            done += 1
+            if status == FOUND:
+                pretty = (site.get("uri_pretty") or site["uri_check"]).replace("{account}", user)
+                cat = WMN_CATEGORIES.get(site.get("cat", ""), site.get("cat", ""))
+                by_cat[cat] = by_cat.get(cat, 0) + 1
+                found_sec.add(site["name"], f"{cat} · {pretty}", url=pretty, level=Level.OK)
+                rep.summary = f"{done}/{len(sites)} site kontrol edildi · {counts[FOUND]} profil bulundu"
+                rep.changed()
+    found_sec.items.sort(key=lambda i: i.label.lower())
+    if not found_sec.items:
+        found_sec.add("Hiçbir sitede profil bulunamadı", level=Level.MUTED)
+    if by_cat:
+        cats = rep.section("Kategorilere göre")
+        for cat, n in sorted(by_cat.items(), key=lambda x: -x[1]):
+            cats.add(cat, f"{n} profil")
+    rep.summary = (f"{done} site kontrol edildi: {counts[FOUND]} profil bulundu, "
+                   f"{counts[MISSING]} sitede yok, {counts[UNKNOWN]} site yanıt vermedi/engelledi.")
+    rep.notice("Site listesi: WhatsMyName projesi (CC BY-SA 4.0, github.com/WebBreacher/WhatsMyName). "
+               "Bulunan profilleri açarak doğrulayın; aynı ad farklı kişilere ait olabilir.")
+
+
 # ---------------------------------------------------------------- e-posta
 
 FREE_PROVIDERS = {
@@ -166,7 +294,8 @@ def _email(ctx: Context, rep: Report, v: dict) -> None:
     try:
         _mail_checks(ctx, mail, domain)
     except OsintError as e:
-        mail.add("DNS", str(e), level=Level.MUTED)
+        rep.source("DNS", False, str(e))
+        mail.add("Durum", "DNS sorgulanamadı; posta altyapısı kontrol edilemedi", level=Level.MUTED)
     rep.changed()
 
     md5 = hashlib.md5(addr.lower().encode()).hexdigest()
@@ -246,8 +375,60 @@ def _permutator(ctx: Context, rep: Report, v: dict) -> None:
                    ("Domain e-posta alıyor." if mx else "Uyarı: domainin MX kaydı yok."))
 
 
+CONTACT_PATHS = ("/", "/iletisim", "/iletisim/", "/contact", "/contact/", "/contact-us", "/hakkimizda",
+                 "/about", "/kvkk", "/impressum", "/kunye", "/ekibimiz", "/team")
+
+
+def site_emails(ctx: Context, rep: Report, domain: str) -> None:
+    """Anahtarsız yedek: domainin kendi sayfalarındaki e-posta adresleri."""
+    from .web import extract
+    found: dict[str, str] = {}
+    phones: set[str] = set()
+    pages = 0
+
+    def fetch(path):
+        try:
+            r = ctx.http.get(f"https://{domain}{path}", allow_redirects=True)
+            return path, r.text if r.status_code == 200 else ""
+        except OsintError:
+            return path, ""
+
+    for path, html in ctx.parallel(fetch, CONTACT_PATHS):
+        if not html:
+            continue
+        pages += 1
+        ex = extract(html)
+        for e in ex["emails"]:
+            found.setdefault(e, path)
+        phones.update(ex["phones"])
+    rep.source(f"{domain} sayfaları", pages > 0, f"{pages} sayfa tarandı")
+    own = {e: p for e, p in found.items() if e.endswith("@" + domain) or e.endswith("." + domain)}
+    other = {e: p for e, p in found.items() if e not in own}
+    sec = rep.section(f"Sitede yayınlanan adresler ({len(own)})")
+    for e, p in sorted(own.items()):
+        sec.add(e, f"sayfa: {p}", level=Level.OK)
+    if not own:
+        sec.add("Domaine ait adres bulunamadı", level=Level.MUTED)
+    if other:
+        o = rep.section("Sayfalarda geçen diğer adresler")
+        for e, p in sorted(other.items()):
+            o.add(e, f"sayfa: {p}")
+    if phones:
+        t = rep.section("Telefonlar")
+        for ph in sorted(phones):
+            t.add(ph, url=f"tel:{ph.replace(' ', '')}")
+    local = sorted({e.split("@")[0] for e in own})
+    if local:
+        rep.section("Adres şablonu ipucu").add("Kullanılan yerel kısımlar", ", ".join(local),
+                                               level=Level.INFO)
+
+
 def _hunter(ctx: Context, rep: Report, v: dict) -> None:
-    key = ctx.require("hunter_api_key", "Hunter.io")
+    if not ctx.settings.hunter_api_key:
+        rep.notice("Hunter.io anahtarı yok; domainin kendi sayfalarındaki adresler tarandı.")
+        site_emails(ctx, rep, v["domain"])
+        return
+    key = ctx.settings.hunter_api_key
     data = (ctx.http.json("https://api.hunter.io/v2/domain-search",
                           params={"domain": v["domain"], "api_key": key, "limit": 50}) or {}).get("data")
     if not isinstance(data, dict):
@@ -355,8 +536,10 @@ DOMAIN = Field("domain", "Domain", "ornek.com", "url", validate.domain)
 
 register(Tool("username", "Kullanıcı Adı", f"{len(SITES)} platformda profil taraması",
               "PERSON_SEARCH", "Kişi", [
-                  Action("scan", "Tara", (Field("username", "Kullanıcı adı", "ornek_kullanici",
-                                                 parse=validate.username),), _username)]))
+                  Action("scan", "Hızlı tara", (Field("username", "Kullanıcı adı", "ornek_kullanici",
+                                                       parse=validate.username),), _username),
+                  Action("deep", "Derin tara (600+ site)", (Field("username", "Kullanıcı adı", "ornek_kullanici",
+                                                                  parse=validate.username),), _username_deep)]))
 register(Tool("email", "E-posta", "MX/SPF/DMARC, Gravatar, permutator",
               "ALTERNATE_EMAIL", "Kişi", [
                   Action("analyze", "Analiz", (Field("email", "E-posta", "kisi@ornek.com", "email",
@@ -365,7 +548,7 @@ register(Tool("email", "E-posta", "MX/SPF/DMARC, Gravatar, permutator",
                       Field("first", "Ad", "Ahmet", "name", lambda s: validate.text(s, 1)),
                       Field("last", "Soyad", "Yılmaz", "name", lambda s: validate.text(s, 1)),
                       DOMAIN), _permutator),
-                  Action("hunter", "Hunter.io", (DOMAIN,), _hunter, needs_key="hunter_api_key")]))
+                  Action("hunter", "Domain e-postaları", (DOMAIN,), _hunter, better_with="hunter_api_key")]))
 register(Tool("phone", "Telefon", "Geçerlilik, operatör, bölge, formatlar",
               "PHONE_ANDROID", "Kişi", [
                   Action("analyze", "Analiz", (Field("phone", "Telefon", "+90 5xx xxx xx xx", "phone",

@@ -72,7 +72,7 @@ def _ip_profile(ctx: Context, rep: Report, ip: str) -> None:
         ptr = dns.resolve(ctx, dns.ptr_name(ip), "PTR")
         sec.add("Reverse DNS", ", ".join(p.rstrip(".") for p in ptr) if ptr else "Yok")
     except OsintError as e:
-        sec.add("Reverse DNS", str(e), level=Level.MUTED)
+        rep.source("Reverse DNS", False, str(e))
     rep.changed()
 
     # Konum ve ağ sahibi
@@ -89,8 +89,9 @@ def _ip_profile(ctx: Context, rep: Report, ip: str) -> None:
             geo.add("Harita", loc, url=f"https://www.openstreetmap.org/?mlat={loc.split(',')[0]}"
                                        f"&mlon={loc.split(',')[1]}#map=11/{loc.replace(',', '/')}")
         geo.note = "Konum, IP bloğunun kayıtlı yeridir; kişinin bulunduğu yer olmayabilir."
+        rep.source("ipinfo.io", True)
     except OsintError as e:
-        geo.add("ipinfo.io", str(e), level=Level.MUTED)
+        rep.source("ipinfo.io", False, str(e).split(": ", 1)[-1])
     try:
         rd = ctx.http.json(f"https://rdap.org/ip/{ip}", ok=(200,))
         geo.add("Ağ adı", rd.get("name", "—"))
@@ -100,8 +101,9 @@ def _ip_profile(ctx: Context, rep: Report, ip: str) -> None:
             geo.add("Kayıt ülkesi", rd["country"])
         if abuse := _rdap_abuse(rd):
             geo.add("Abuse iletişim", abuse)
+        rep.source("RDAP (IP)", True)
     except OsintError as e:
-        geo.add("RDAP", str(e), level=Level.MUTED)
+        rep.source("RDAP (IP)", False, str(e).split(": ", 1)[-1])
     rep.changed()
 
     # Shodan InternetDB: anahtarsız, ücretsiz port/zafiyet özeti
@@ -109,7 +111,7 @@ def _ip_profile(ctx: Context, rep: Report, ip: str) -> None:
     try:
         db = ctx.http.json(f"https://internetdb.shodan.io/{ip}", ok=(200, 404))
     except OsintError as e:
-        exp.add("InternetDB", str(e), level=Level.MUTED)
+        rep.source("Shodan InternetDB", False, str(e).split(": ", 1)[-1])
         db = None
     if db is None or "ports" not in (db or {}):
         if db is not None:
@@ -148,8 +150,11 @@ def _rdap_domain(ctx: Context, rep: Report, domain: str) -> None:
     try:
         rd = ctx.http.json(f"https://rdap.org/domain/{domain}")
     except OsintError as e:
-        sec.add("RDAP", str(e), level=Level.MUTED)
+        rep.source("RDAP (domain)", False, str(e).split(": ", 1)[-1])
+        sec.add("WHOIS", "Bu uzantı için RDAP kaydı alınamadı", level=Level.MUTED)
         sec.note = "Bazı ülke uzantıları (ör. .tr) RDAP sunmaz; ICANN/NIC linklerini kullanın."
+        if domain.endswith(".tr"):
+            sec.link("TRABIS (.tr WHOIS)", f"https://www.trabis.gov.tr/")
         rep.changed()
         return
     for ent in rd.get("entities", []) or []:
@@ -468,7 +473,6 @@ def clean_subdomains(names: set[str], domain: str) -> set[str]:
 def _subdomains(ctx: Context, rep: Report, v: dict) -> None:
     domain: str = v["domain"]
     found: set[str] = set()
-    src = rep.section("Kaynaklar")
 
     def collect(item):
         name, fn = item
@@ -479,13 +483,15 @@ def _subdomains(ctx: Context, rep: Report, v: dict) -> None:
 
     for name, names, err in ctx.parallel(collect, SUBDOMAIN_SOURCES):
         if err:
-            src.add(name, err, level=Level.MUTED)
+            rep.source(name, False, err.split(": ", 1)[-1])
         else:
-            src.add(name, f"{len(names)} kayıt", level=Level.OK)
+            rep.source(name, True, f"{len(names)} kayıt")
             found |= names
     rep.changed()
+    if not any(ok for _, ok, _ in rep.sources):
+        raise OsintError("Hiçbir subdomain kaynağına ulaşılamadı (limit veya bağlantı sorunu)")
     if not found:
-        rep.summary = "Hiç subdomain bulunamadı."
+        rep.section("Sonuç").add("Durum", "Pasif kaynaklarda hiç subdomain kaydı yok", level=Level.MUTED)
         return
 
     limit = 300
@@ -584,11 +590,28 @@ def _resolve_target(ctx: Context, target: str) -> str:
 
 def _reverse_ip(ctx: Context, rep: Report, v: dict) -> None:
     ip = _resolve_target(ctx, v["target"])
-    resp = ctx.http.get("https://api.hackertarget.com/reverseiplookup/", params={"q": ip})
-    text = resp.text.strip()
-    if resp.status_code != 200 or text.lower().startswith("error") or "API count" in text:
-        raise OsintError("HackerTarget: günlük ücretsiz limit doldu, yarın tekrar deneyin")
-    domains = sorted({d.strip().lower() for d in text.splitlines() if d.strip() and " " not in d.strip()})
+    domains: set[str] = set()
+    try:
+        resp = ctx.http.get("https://api.hackertarget.com/reverseiplookup/", params={"q": ip})
+        text = resp.text.strip()
+        if resp.status_code != 200 or text.lower().startswith("error") or "API count" in text:
+            raise OsintError("günlük ücretsiz limit doldu")
+        domains |= {d.strip().lower() for d in text.splitlines()
+                    if d.strip() and " " not in d.strip() and "." in d}
+        rep.source("HackerTarget", True, f"{len(domains)} domain")
+    except OsintError as e:
+        rep.source("HackerTarget", False, str(e).split(": ", 1)[-1])
+    try:
+        data = ctx.http.json("https://urlscan.io/api/v1/search/", params={"q": f"page.ip:{ip}", "size": 100})
+        seen = {str((r.get("page") or {}).get("domain", "")).lower() for r in (data or {}).get("results") or []
+                if isinstance(r, dict)} - {""}
+        rep.source("urlscan.io", True, f"{len(seen)} domain")
+        domains |= seen
+    except OsintError as e:
+        rep.source("urlscan.io", False, str(e).split(": ", 1)[-1])
+    if not any(ok for _, ok, _ in rep.sources):
+        raise OsintError("Reverse IP kaynaklarına ulaşılamadı (limit veya bağlantı sorunu)")
+    domains = sorted(domains)
     sec = rep.section(f"{ip} üzerindeki domainler ({len(domains)})")
     if not domains:
         sec.add("Sonuç", "Bu IP için kayıtlı domain yok", level=Level.MUTED)

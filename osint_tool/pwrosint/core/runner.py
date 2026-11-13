@@ -7,7 +7,7 @@ import time
 from typing import Any, Callable, Optional
 
 from .context import Context
-from .errors import Cancelled, OsintError
+from .errors import Cancelled, MissingApiKey, OsintError
 from .registry import Action, Tool
 from .report import Report
 
@@ -22,6 +22,8 @@ def run_action(ctx: Context, tool: Tool, action: Action, values: dict[str, Any],
     started = time.monotonic()
     try:
         action.run(ctx, report, values)
+    except MissingApiKey as e:
+        report.missing_key = (e.service, e.setting)
     except Cancelled:
         report.error("Sorgu iptal edildi")
     except OsintError as e:

@@ -106,10 +106,12 @@ def test_report_text_and_json():
     assert data["sections"][0]["items"][0]["level"] == "ok"
 
 
-def test_runner_turns_errors_into_report(ctx):
+def test_missing_key_is_a_notice_not_an_error(ctx):
     tool = get_tool("shodan")
-    report = run_action(ctx, tool, tool.action("host"), {"ip": "8.8.8.8"})
-    assert report.errors and "Shodan API anahtarı" in report.errors[0]
+    report = run_action(ctx, tool, tool.action("search"), {"query": "port:22"})
+    assert not report.errors
+    assert report.missing_key == ("Shodan", "shodan_api_key")
+    assert "API anahtarı gerekli" in report.to_text()
 
 
 def test_runner_hides_passwords_from_target(ctx, http):

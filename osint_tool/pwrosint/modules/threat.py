@@ -21,8 +21,47 @@ def _strip_html(s: str) -> str:
     return unescape(re.sub(r"<[^>]+>", "", s or ""))
 
 
+def xon_breaches(ctx: Context, rep: Report, email: str) -> None:
+    """Anahtarsız yedek: XposedOrNot sızıntı analizi."""
+    data = ctx.http.json("https://api.xposedornot.com/v1/breach-analytics", params={"email": email},
+                         ok=(200, 404), timeout=max(20, ctx.settings.timeout))
+    details = (((data or {}).get("ExposedBreaches") or {}).get("breaches_details")) or []
+    details = [d for d in details if isinstance(d, dict)]
+    rep.source("XposedOrNot", True, f"{len(details)} sızıntı")
+    if not details:
+        rep.section("Sonuç").add("Durum", "Bilinen hiçbir sızıntıda bulunamadı", level=Level.OK)
+        return
+    summary = ((data or {}).get("BreachMetrics") or {})
+    rep.summary = f"{len(details)} sızıntıda bulundu."
+    risk = (summary.get("risk") or [{}])[0] if isinstance(summary.get("risk"), list) else {}
+    if risk.get("risk_label"):
+        rep.section("Risk değerlendirmesi").add(
+            "Risk", f"{risk.get('risk_label')} ({risk.get('risk_score', '?')}/100)",
+            level=Level.BAD if str(risk.get("risk_label")).lower() in ("high", "yüksek") else Level.WARN)
+    pw_types = {"plaintext": "Düz metin (çok tehlikeli)", "easytocrack": "Kolay kırılan hash",
+                "hardtocrack": "Güçlü hash", "unknown": "Bilinmiyor"}
+    for d in sorted(details, key=lambda d: str(d.get("xposed_date", "")), reverse=True):
+        sec = rep.section(f"{d.get('breach', '?')} — {d.get('xposed_date', '?')}")
+        sec.add("Sızan veriler", str(d.get("xposed_data", "")).replace(";", ", "), level=Level.BAD)
+        if d.get("xposed_records"):
+            sec.add("Etkilenen hesap", f"{int(d['xposed_records']):,}".replace(",", "."))
+        if d.get("password_risk"):
+            sec.add("Şifre saklama", pw_types.get(d["password_risk"], d["password_risk"]),
+                    level=Level.BAD if d["password_risk"] in ("plaintext", "easytocrack") else Level.INFO)
+        if d.get("domain"):
+            sec.add("Site", d["domain"])
+        if d.get("industry"):
+            sec.add("Sektör", d["industry"])
+        if desc := _strip_html(str(d.get("details", ""))):
+            sec.note = desc[:300] + ("…" if len(desc) > 300 else "")
+
+
 def _hibp_email(ctx: Context, rep: Report, v: dict) -> None:
-    key = ctx.require("haveibeenpwned_api_key", "Have I Been Pwned")
+    if not ctx.settings.haveibeenpwned_api_key:
+        rep.notice("HIBP anahtarı yok; sızıntı verileri ücretsiz XposedOrNot veritabanından alındı.")
+        xon_breaches(ctx, rep, v["email"])
+        return
+    key = ctx.settings.haveibeenpwned_api_key
     resp = ctx.http.get(f"https://haveibeenpwned.com/api/v3/breachedaccount/{quote(v['email'])}",
                         params={"truncateResponse": "false"},
                         headers={"hibp-api-key": key, "User-Agent": ctx.settings.user_agent})
@@ -107,8 +146,43 @@ def _hibp_password(ctx: Context, rep: Report, v: dict) -> None:
 
 # ---------------------------------------------------------------- Shodan
 
+def internetdb(ctx: Context, rep: Report, ip: str) -> None:
+    """Anahtarsız yedek: Shodan InternetDB (haftalık güncellenen port/CVE özeti)."""
+    db = ctx.http.json(f"https://internetdb.shodan.io/{ip}", ok=(200, 404))
+    rep.source("Shodan InternetDB", True)
+    if not db or "ports" not in db:
+        rep.section("Sonuç").add("Durum", "Bu IP Shodan taramalarında görünmüyor", level=Level.MUTED)
+        return
+    sec = rep.section("Host (InternetDB)")
+    sec.add("Açık portlar", ", ".join(map(str, db.get("ports") or [])) or "—",
+            level=Level.WARN if db.get("ports") else Level.OK)
+    if db.get("hostnames"):
+        sec.add("Hostname'ler", ", ".join(db["hostnames"][:15]))
+    if db.get("tags"):
+        sec.add("Etiketler", ", ".join(db["tags"]), level=Level.WARN if {"malware", "c2", "compromised"} & set(db["tags"]) else Level.INFO)
+    cpes = db.get("cpes") or []
+    if cpes:
+        sw = rep.section(f"Tespit edilen yazılımlar ({len(cpes)})")
+        for c in cpes[:30]:
+            # CPE 2.2: cpe:/<tür>:<üretici>:<ürün>:<sürüm>
+            parts = c.split(":")
+            name = " ".join(p.replace("_", " ") for p in parts[2:4] if p) or c
+            sw.add(name, parts[4] if len(parts) > 4 and parts[4] not in ("*", "-") else "")
+    vulns = db.get("vulns") or []
+    vs = rep.section(f"Zafiyetler ({len(vulns)})")
+    if not vulns:
+        vs.add("Bilinen CVE yok", level=Level.OK)
+    for cve in vulns[:60]:
+        vs.add(cve, "", url=f"https://nvd.nist.gov/vuln/detail/{cve}", level=Level.BAD)
+    rep.section("Link").link("Shodan", f"https://www.shodan.io/host/{ip}")
+
+
 def _shodan_host(ctx: Context, rep: Report, v: dict) -> None:
-    key = ctx.require("shodan_api_key", "Shodan")
+    if not ctx.settings.shodan_api_key:
+        rep.notice("Shodan anahtarı yok; ücretsiz InternetDB verisi gösteriliyor (banner ve konum için anahtar ekleyin).")
+        internetdb(ctx, rep, v["ip"])
+        return
+    key = ctx.settings.shodan_api_key
     data = ctx.http.json(f"https://api.shodan.io/shodan/host/{v['ip']}", params={"key": key}, ok=(200, 404))
     if not data or "error" in data:
         rep.section("Sonuç").add("Durum", "Bu IP Shodan'da kayıtlı değil", level=Level.MUTED)
@@ -173,7 +247,53 @@ def _vt_stats(rep: Report, attrs: dict) -> None:
             f.add(eng, res or "", level=Level.BAD)
 
 
+def otx_report(ctx: Context, rep: Report, kind: str, value: str) -> None:
+    """Anahtarsız yedek: AlienVault OTX topluluk tehdit istihbaratı."""
+    base = f"https://otx.alienvault.com/api/v1/indicators/{kind}/{value}"
+    data = ctx.http.json(f"{base}/general", timeout=max(20, ctx.settings.timeout))
+    rep.source("AlienVault OTX", True)
+    pulses = [p for p in ((data.get("pulse_info") or {}).get("pulses") or []) if isinstance(p, dict)]
+    count = (data.get("pulse_info") or {}).get("count", len(pulses))
+    sec = rep.section("Tehdit istihbaratı (AlienVault OTX)")
+    sec.add("Tehdit raporu (pulse)", f"{count} rapor" if count else "Hiçbir raporda geçmiyor",
+            level=Level.BAD if count else Level.OK)
+    validation = [x.get("name") or x.get("source") for x in data.get("validation") or [] if isinstance(x, dict)]
+    if validation:
+        sec.add("Beyaz liste", ", ".join(str(x) for x in validation[:5]), level=Level.OK)
+    if data.get("reputation"):
+        sec.add("İtibar puanı", data["reputation"], level=Level.BAD if data["reputation"] > 0 else Level.INFO)
+    if data.get("country_name"):
+        sec.add("Ülke", data["country_name"])
+    if data.get("asn"):
+        sec.add("ASN", data["asn"])
+    if kind == "file" and data.get("type_title"):
+        sec.add("Dosya türü", data["type_title"])
+    tags = sorted({t for p in pulses for t in p.get("tags") or []})
+    families = sorted({m.get("display_name") for p in pulses for m in p.get("malware_families") or []
+                       if isinstance(m, dict) and m.get("display_name")})
+    if families:
+        sec.add("Zararlı aileleri", ", ".join(families[:10]), level=Level.BAD)
+    if tags:
+        sec.add("Etiketler", ", ".join(tags[:20]), level=Level.WARN)
+    if pulses:
+        ps = rep.section(f"Raporlar ({len(pulses)})")
+        for p in pulses[:20]:
+            ps.add(p.get("name", "?"), str(p.get("created", ""))[:10],
+                   url=f"https://otx.alienvault.com/pulse/{p.get('id')}", level=Level.WARN)
+    rep.section("Link").link("OTX", f"https://otx.alienvault.com/indicator/{kind}/{value}")
+
+
+def _vt_or_otx(ctx: Context, rep: Report, kind: str, value: str) -> bool:
+    if ctx.settings.virustotal_api_key:
+        return False
+    rep.notice("VirusTotal anahtarı yok; tehdit verileri ücretsiz AlienVault OTX'ten alındı.")
+    otx_report(ctx, rep, kind, value)
+    return True
+
+
 def _vt_domain(ctx: Context, rep: Report, v: dict) -> None:
+    if _vt_or_otx(ctx, rep, "domain", v["domain"]):
+        return
     attrs = _vt(ctx, f"domains/{v['domain']}")
     if attrs is None:
         rep.section("Sonuç").add("Durum", "VirusTotal'de kayıt yok", level=Level.MUTED)
@@ -185,6 +305,8 @@ def _vt_domain(ctx: Context, rep: Report, v: dict) -> None:
 
 
 def _vt_ip(ctx: Context, rep: Report, v: dict) -> None:
+    if _vt_or_otx(ctx, rep, "IPv4" if ":" not in v["ip"] else "IPv6", v["ip"]):
+        return
     attrs = _vt(ctx, f"ip_addresses/{v['ip']}")
     if attrs is None:
         rep.section("Sonuç").add("Durum", "VirusTotal'de kayıt yok", level=Level.MUTED)
@@ -204,6 +326,8 @@ def file_hash(value: str) -> str:
 
 
 def _vt_file(ctx: Context, rep: Report, v: dict) -> None:
+    if _vt_or_otx(ctx, rep, "file", v["hash"]):
+        return
     attrs = _vt(ctx, f"files/{v['hash']}")
     if attrs is None:
         rep.section("Sonuç").add("Durum", "Bu dosya VirusTotal'de hiç taranmamış", level=Level.MUTED)
@@ -229,16 +353,16 @@ register(Tool("hibp", "Sızıntı Kontrolü", "Have I Been Pwned: e-posta ve şi
                                                      lambda s: s),), _hibp_password),
                   Action("email", "E-posta", (Field("email", "E-posta", "kisi@ornek.com", "email",
                                                     validate.email),), _hibp_email,
-                         needs_key="haveibeenpwned_api_key")]))
+                         better_with="haveibeenpwned_api_key")]))
 register(Tool("shodan", "Shodan", "Host detayı ve arama", "RADAR", "Tehdit İstihbaratı", [
-    Action("host", "Host", (IP,), _shodan_host, needs_key="shodan_api_key"),
+    Action("host", "Host", (IP,), _shodan_host, better_with="shodan_api_key"),
     Action("search", "Arama", (Field("query", "Sorgu", "port:22 country:TR", parse=validate.text),),
            _shodan_search, needs_key="shodan_api_key")]))
 register(Tool("virustotal", "VirusTotal", "Domain, IP ve dosya itibarı", "SHIELD", "Tehdit İstihbaratı", [
-    Action("domain", "Domain", (DOMAIN,), _vt_domain, needs_key="virustotal_api_key"),
-    Action("ip", "IP", (IP,), _vt_ip, needs_key="virustotal_api_key"),
+    Action("domain", "Domain", (DOMAIN,), _vt_domain, better_with="virustotal_api_key"),
+    Action("ip", "IP", (IP,), _vt_ip, better_with="virustotal_api_key"),
     Action("file", "Dosya hash", (Field("hash", "MD5 / SHA-1 / SHA-256", "44d88612fea8a8f36de82e1278abb02f",
-                                        parse=file_hash),), _vt_file, needs_key="virustotal_api_key")]))
+                                        parse=file_hash),), _vt_file, better_with="virustotal_api_key")]))
 
 
 # ---------------------------------------------------------------- taklit domainler
@@ -378,7 +502,7 @@ def _blacklist(ctx: Context, rep: Report, v: dict) -> None:
         elif state == "clean":
             sec.add(name, "Temiz", level=Level.OK)
         else:
-            sec.add(name, detail, level=Level.MUTED)
+            rep.source(name, False, detail.split(": ", 1)[-1])
     rep.summary = (f"{len(listed)} kara listede bulundu — bu IP'den gelen e-postalar engellenebilir."
                    if listed else "Kontrol edilen listelerin hiçbirinde yok.")
     links = rep.section("Dış araçlar")

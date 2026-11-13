@@ -320,7 +320,8 @@ def test_dnsbl(ctx, http):
     report = run(ctx, "blacklist", ip="1.2.3.4")
     sec = items(report, "Kara liste")
     assert sec["SpamCop"].level == Level.BAD
-    assert sec["Spamhaus ZEN"].level == Level.MUTED  # genel DNS engeli ≠ listede
+    assert "Spamhaus ZEN" not in sec  # genel DNS engeli ≠ listede; kaynak durumuna taşınır
+    assert ("Spamhaus ZEN", False) in [(n, ok) for n, ok, _ in report.sources]
     assert sec["Barracuda"].level == Level.OK
     assert report.summary.startswith("1 kara listede")
 

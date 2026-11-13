@@ -55,6 +55,12 @@ def doh(answers, status=0, rtype=None):
     return {"Status": status, "Answer": [{"type": codes.get(rtype, 1), "data": a} for a in answers]}
 
 
+@pytest.fixture(autouse=True)
+def isolated_config(tmp_path, monkeypatch):
+    """Testler kullanıcının gerçek ayar/önbellek dizinine dokunmasın."""
+    monkeypatch.setenv("PWR_OSINT_CONFIG", str(tmp_path / "config.json"))
+
+
 @pytest.fixture
 def http():
     return FakeHttp()

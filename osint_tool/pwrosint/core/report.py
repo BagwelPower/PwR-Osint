@@ -64,6 +64,13 @@ class Report:
         self.errors: list[str] = []
         self.summary: Optional[str] = None
         self.elapsed: Optional[float] = None
+        # Sorgulanan kaynakların durumu: (ad, başarılı mı, ayrıntı). Sonuçlardan ayrı
+        # tutulur ki bir kaynağın limiti dolunca rapor "bozuk" görünmesin.
+        self.sources: list[tuple[str, bool, str]] = []
+        # Hata olmayan ama kullanıcının bilmesi gereken durumlar (ör. yedek kaynak kullanıldı).
+        self.notices: list[str] = []
+        # Eksik API anahtarı: (servis, ayar adı). Arayüz bunu hata değil, uyarı olarak gösterir.
+        self.missing_key: Optional[tuple[str, str]] = None
         self._on_change = on_change
         self._lock = threading.Lock()
 
@@ -73,6 +80,21 @@ class Report:
         with self._lock:
             self.sections.append(sec)
         return sec
+
+    def source(self, name: str, ok: bool, detail: str = "") -> None:
+        with self._lock:
+            self.sources.append((name, ok, detail))
+
+    def notice(self, message: str) -> None:
+        with self._lock:
+            if message not in self.notices:
+                self.notices.append(message)
+
+    def highlights(self, limit: int = 8) -> list[tuple[str, Item]]:
+        """Rapordaki kritik (BAD) ve dikkat (WARN) bulguları, önem sırasıyla."""
+        out = [(s.title, i) for lvl in (Level.BAD, Level.WARN) for s in self.sections
+               for i in s.items if i.level == lvl]
+        return out[:limit]
 
     def error(self, message: str) -> None:
         with self._lock:
@@ -95,6 +117,10 @@ class Report:
                 for s in self.sections
             ],
             "errors": list(self.errors),
+            "notices": list(self.notices),
+            "missing_key": list(self.missing_key) if self.missing_key else None,
+            "sources": [{"name": n, "ok": ok, "detail": d} for n, ok, d in self.sources],
+            "highlights": [{"section": t, **i.to_dict()} for t, i in self.highlights()],
         }
 
     def to_json(self) -> str:
@@ -105,6 +131,12 @@ class Report:
         out = [f"# {self.title}" + (f" — {self.target}" if self.target else "")]
         if self.summary:
             out.append(self.summary)
+        for n in self.notices:
+            out.append(f"Not: {n}")
+        hl = self.highlights()
+        if hl:
+            out.append("\n## Önemli bulgular")
+            out.extend(f"  {'✖' if i.level == Level.BAD else '!'} {i.label}: {i.value}".rstrip(": ") for _, i in hl)
         for s in self.sections:
             out.append(f"\n## {s.title}")
             if s.note:
@@ -112,6 +144,11 @@ class Report:
             width = max((len(i.label) for i in s.items if i.value), default=0)
             for i in s.items:
                 out.append(f"  {i.label:<{width}}  {i.value}".rstrip() if i.value else f"  {i.label}")
+        if self.missing_key:
+            out.append(f"\n! {self.missing_key[0]} API anahtarı gerekli (Ayarlar → {self.missing_key[1]})")
+        if self.sources:
+            out.append("\n## Kaynak durumu")
+            out.extend(f"  {'✔' if ok else '·'} {n}" + (f" — {d}" if d else "") for n, ok, d in self.sources)
         if self.errors:
             out.append("\n## Hatalar")
             out.extend(f"  ! {e}" for e in self.errors)
