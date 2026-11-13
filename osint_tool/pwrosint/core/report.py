@@ -71,6 +71,8 @@ class Report:
         self.notices: list[str] = []
         # Eksik API anahtarı: (servis, ayar adı). Arayüz bunu hata değil, uyarı olarak gösterir.
         self.missing_key: Optional[tuple[str, str]] = None
+        self.tool_id: Optional[str] = None
+        self.action_id: Optional[str] = None
         self._on_change = on_change
         self._lock = threading.Lock()
 
@@ -125,6 +127,8 @@ class Report:
         return {
             "title": self.title,
             "target": self.target,
+            "tool": self.tool_id,
+            "action": self.action_id,
             "summary": self.summary,
             "sections": [
                 {"title": s.title, "note": s.note, "items": [i.to_dict() for i in s.items]}

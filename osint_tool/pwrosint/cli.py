@@ -272,6 +272,12 @@ def one_shot(args: argparse.Namespace) -> int:
     else:
         report = execute(ctx, tool, action, values)
         render(report)
+    if args.html:
+        from .core.store import to_html
+        with open(args.html, "w", encoding="utf-8") as f:
+            f.write(to_html(report, f"PwR Osint {__version__}"))
+        if not args.json:
+            console.print(f"[green]✔ HTML rapor kaydedildi: {args.html}[/]")
     return 1 if report.errors and not report.sections else 0
 
 
@@ -280,6 +286,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("tool", nargs="?", help="araç (ör. dns, host, username)")
     parser.add_argument("values", nargs="*", help="[işlem] girdiler")
     parser.add_argument("--json", action="store_true", help="sonucu JSON olarak yaz")
+    parser.add_argument("--html", metavar="DOSYA", help="raporu tek dosyalık HTML olarak kaydet")
     parser.add_argument("--list", action="store_true", help="araçları listele")
     parser.add_argument("--version", action="version", version=f"PwR Osint {__version__}")
     args = parser.parse_args(argv)

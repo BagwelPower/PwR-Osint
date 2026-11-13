@@ -23,6 +23,7 @@ from pwrosint.core.history import History
 from pwrosint.core.registry import (CATEGORIES, CATEGORY_INFO, Action, InputError, Tool, all_tools, get_tool,
                                     parse_inputs)
 from pwrosint.core.samples import NEEDS_KEY, SAMPLES
+from pwrosint.core.store import ReportStore, to_html
 from pwrosint.core.report import Item, Level, Report
 from pwrosint.core.runner import run_action
 
@@ -91,6 +92,7 @@ class App:
         self.clipboard = ft.Clipboard()
         self.share = ft.Share()
         self.file_picker = ft.FilePicker()
+        self.store = ReportStore()
         self.prefill: dict = {}
 
         page.title = "PwR Osint"
@@ -147,6 +149,18 @@ class App:
                 pass
         elif route == "/settings":
             page.views.append(self.settings_view())
+        elif route == "/saved":
+            page.views.append(self.saved_view())
+        elif route.startswith("/saved/"):
+            page.views.append(self.saved_view())
+            try:
+                report = self.store.load(route[7:])
+                tool = get_tool(report.tool_id) if report.tool_id else None
+            except (OSError, ValueError, KeyError):
+                report, tool = None, None
+            if report and tool:
+                screen = ToolScreen(self, tool, tool.action(report.action_id) if report.action_id else tool.actions[0])
+                page.views.append(screen.saved_view(report, route))
         elif route == "/diagnostics":
             page.views.append(self.settings_view())
             page.views.append(Diagnostics(self).view())
@@ -200,7 +214,9 @@ class App:
             route="/", bgcolor=BG, padding=0,
             appbar=ft.AppBar(
                 title=ft.Text("PwR Osint", font_family=MONO, weight=ft.FontWeight.BOLD), bgcolor=BG,
-                actions=[ft.IconButton(ft.Icons.TUNE, tooltip="Ayarlar", on_click=lambda e: self.go("/settings"))]),
+                actions=[ft.IconButton(ft.Icons.FOLDER_OPEN, tooltip="Kayıtlı raporlar",
+                                       on_click=lambda e: self.go("/saved")),
+                         ft.IconButton(ft.Icons.TUNE, tooltip="Ayarlar", on_click=lambda e: self.go("/settings"))]),
             controls=[ft.SafeArea(expand=True, content=ft.ListView(
                 expand=True, padding=ft.Padding.symmetric(horizontal=16), spacing=12, controls=body))])
 
@@ -262,6 +278,37 @@ class App:
         return ft.Chip(label=ft.Text(h.label, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, width=None),
                        leading=ft.Icon(icon(tool.icon), size=16, color=ACCENT), on_click=open_,
                        bgcolor=SURFACE)
+
+    # ------------------------------------------------ kayıtlı raporlar
+    def saved_view(self) -> ft.View:
+        import datetime as _dt
+        items = self.store.list()
+        rows: list[ft.Control] = []
+        if not items:
+            rows.append(ft.Text("Henüz kayıtlı rapor yok. Bir sorgunun sonucunda 🔖 Kaydet'e dokunun.",
+                                color=MUTED, size=13))
+        for s in items:
+            when = _dt.datetime.fromtimestamp(s.saved_at).strftime("%d.%m.%Y %H:%M")
+
+            def delete(e, rid=s.id):
+                self.store.delete(rid)
+                self.route_change()
+
+            rows.append(ft.Container(
+                bgcolor=SURFACE, border_radius=12, ink=True, padding=12,
+                on_click=lambda e, rid=s.id: self.go(f"/saved/{rid}"),
+                content=ft.Row(controls=[
+                    ft.Column(spacing=0, expand=True, tight=True, controls=[
+                        ft.Text(s.target or s.title, weight=ft.FontWeight.BOLD, size=14, max_lines=1,
+                                overflow=ft.TextOverflow.ELLIPSIS),
+                        ft.Text(f"{s.title} · {when}", size=11, color=MUTED),
+                        *([ft.Text(f"{s.findings} önemli bulgu", size=11, color=LEVEL_COLOR[Level.BAD])]
+                          if s.findings else [])]),
+                    ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_color=MUTED, tooltip="Sil", on_click=delete)])))
+        return ft.View(route="/saved", bgcolor=BG, padding=0,
+                       appbar=ft.AppBar(title=ft.Text(f"Kayıtlı raporlar ({len(items)})"), bgcolor=BG),
+                       controls=[ft.SafeArea(expand=True, content=ft.ListView(
+                           expand=True, padding=16, spacing=8, controls=rows))])
 
     # ------------------------------------------------ ayarlar
     def settings_view(self) -> ft.View:
@@ -480,7 +527,7 @@ class ToolScreen:
         self.page.update()
 
     # ------------------------------------------------ sonuçlar
-    def render(self, report: Report, partial: bool = False) -> None:
+    def render(self, report: Report, partial: bool = False, update: bool = True) -> None:
         controls: list[ft.Control] = [self.header(report, partial)]
         if report.summary:
             controls.append(ft.Container(
@@ -503,7 +550,8 @@ class ToolScreen:
         if not partial and report.sources:
             controls.append(self.sources_card(report.sources))
         self.results.controls = controls
-        self.page.update()
+        if update:
+            self.page.update()
 
     def header(self, report: Report, partial: bool) -> ft.Control:
         status = "Çalışıyor…" if partial else (
@@ -518,7 +566,33 @@ class ToolScreen:
                                                                 "JSON panoya kopyalandı")),
             ft.IconButton(ft.Icons.SHARE, icon_size=18, tooltip="Paylaş", disabled=partial,
                           on_click=lambda e: self.page.run_task(self.share_report, report)),
-        ])
+            ft.IconButton(ft.Icons.BOOKMARK_ADD_OUTLINED, icon_size=18, tooltip="Raporu kaydet",
+                          disabled=partial, on_click=lambda e: self.save_report(report)),
+            ft.IconButton(ft.Icons.DOWNLOAD, icon_size=18, tooltip="HTML olarak dışa aktar", disabled=partial,
+                          on_click=lambda e: self.page.run_task(self.export_html, report)),
+        ], spacing=0)
+
+    def save_report(self, report: Report) -> None:
+        try:
+            self.app.store.save(report)
+            self.app.toast("Rapor kaydedildi (ana ekran → 📁)")
+        except OSError as ex:
+            self.app.toast(f"Kaydedilemedi: {ex}")
+
+    async def export_html(self, report: Report) -> None:
+        import re as _re
+        data = to_html(report, f"PwR Osint {__version__}").encode("utf-8")
+        name = _re.sub(r"[^A-Za-z0-9._-]+", "_", f"pwr-osint_{report.target or 'rapor'}")[:60] + ".html"
+        try:
+            path = await self.app.file_picker.save_file(dialog_title="Raporu kaydet", file_name=name,
+                                                        allowed_extensions=["html"], src_bytes=data)
+            if path:
+                self.app.toast("HTML rapor kaydedildi")
+        except Exception:
+            try:
+                await self.app.share.share_files([ft.ShareFile.from_bytes(data, mime_type="text/html", name=name)])
+            except Exception as ex:
+                self.app.toast(f"Dışa aktarılamadı: {ex}")
 
     @staticmethod
     def banner(icon_name, color, text: str, action: Optional[ft.Control] = None) -> ft.Control:
@@ -648,6 +722,17 @@ class ToolScreen:
             controls_padding=ft.Padding.only(left=16, right=16, bottom=12),
             shape=ft.RoundedRectangleBorder(radius=14), collapsed_shape=ft.RoundedRectangleBorder(radius=14),
             controls=[ft.Column(spacing=6, tight=True, controls=rows)])
+
+    def saved_view(self, report: Report, route: str) -> ft.View:
+        """Kayıtlı bir raporu, girdi alanları olmadan, aynı kart düzeniyle gösterir."""
+        self.report = report
+        self.render(report, update=False)
+        return ft.View(
+            route=route, bgcolor=BG, padding=0,
+            appbar=ft.AppBar(title=ft.Text(report.target or self.tool.title), bgcolor=BG),
+            controls=[ft.SafeArea(expand=True, content=ft.ListView(
+                expand=True, padding=16, spacing=12, controls=[
+                    ft.Text(report.title, size=12, color=MUTED), self.results]))])
 
     def _autorun(self) -> None:
         time.sleep(0.05)  # görünüm ekrana yerleşsin
