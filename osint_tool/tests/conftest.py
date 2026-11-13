@@ -55,6 +55,17 @@ def doh(answers, status=0, rtype=None):
     return {"Status": status, "Answer": [{"type": codes.get(rtype, 1), "data": a} for a in answers]}
 
 
+@pytest.fixture(autouse=True, scope="session")
+def sample_image_file(tmp_path_factory):
+    """Görsel dosya analizi örneği için EXIF/GPS içeren gerçek bir JPEG dosyası."""
+    from pwrosint.core.samples import SAMPLES
+    from test_new_modules import build_jpeg_with_exif
+    path = tmp_path_factory.mktemp("img") / "foto.jpg"
+    path.write_bytes(build_jpeg_with_exif())
+    SAMPLES[("image", "file")]["file"] = str(path)
+    return path
+
+
 @pytest.fixture(autouse=True)
 def isolated_config(tmp_path, monkeypatch):
     """Testler kullanıcının gerçek ayar/önbellek dizinine dokunmasın."""

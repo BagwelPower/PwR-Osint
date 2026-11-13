@@ -166,7 +166,7 @@ def test_urlscan():
 
 def test_image_exif_gps():
     from pwrosint.modules.web import parse_url
-    r = run("image", url=parse_url("https://raw.githubusercontent.com/ianare/exif-samples/master/jpg/gps/DSCN0010.jpg"))
+    r = run("image", "analyze", url=parse_url("https://raw.githubusercontent.com/ianare/exif-samples/master/jpg/gps/DSCN0010.jpg"))
     assert section(r, "EXIF")["Üretici"].value.startswith("NIKON")
     assert "GPS konumu" in [s.title for s in r.sections]
 
@@ -216,6 +216,11 @@ def test_reverse_ip_has_domains():
 
 
 def test_username_deep_whatsmyname():
+    import time
+    t = time.monotonic()
     r = run("username", "deep", username="torvalds")
+    took = time.monotonic() - t
+    print(f"derin tarama süresi: {took:.0f} sn")
     assert not r.errors
     assert len(section(r, "Bulunan")) >= 10, r.summary
+    assert took < 120, f"derin tarama çok yavaş: {took:.0f} sn"

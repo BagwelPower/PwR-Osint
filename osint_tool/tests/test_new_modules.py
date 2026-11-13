@@ -92,7 +92,7 @@ def test_image_size_png_gif():
 
 def test_image_tool_end_to_end(ctx, http):
     http.add("https://ornek.com/foto.jpg", build_jpeg_with_exif())
-    report = run(ctx, "image", url="https://ornek.com/foto.jpg")
+    report = run(ctx, "image", "analyze", url="https://ornek.com/foto.jpg")
     assert not report.errors
     gps = items(report, "GPS")
     assert gps["Koordinat"].level == Level.BAD and "41.0082" in gps["Koordinat"].value
@@ -376,3 +376,26 @@ def test_password_strength():
     assert weak["Değerlendirme"][1] == Level.BAD and "Tahmin edilebilir kalıp" in weak
     strong = dict((l, (v, lv)) for l, v, lv in password_strength("k9#Vq!2zR@pL7m$w"))
     assert strong["Değerlendirme"][0].startswith("Güçlü")
+
+
+def test_image_from_device_file(ctx, http, sample_image_file):
+    http.add("https://nominatim.openstreetmap.org/", {"display_name": "Sultanahmet, Fatih, İstanbul"})
+    values = {"file": media.local_image(str(sample_image_file))}
+    from pwrosint.core.registry import get_tool
+    from pwrosint.core.runner import run_action
+    tool = get_tool("image")
+    report = run_action(ctx, tool, tool.action("file"), values)
+    assert not report.errors and report.target == "foto.jpg"
+    gps = items(report, "GPS")
+    assert gps["Adres"].value.startswith("Sultanahmet") and gps["Adres"].level == Level.BAD
+    assert items(report, "Dosya")["Dosya adı"].value == "foto.jpg"
+    assert "lens.google.com" in items(report, "Tersine")["Google Lens"].url
+
+
+def test_local_image_validation(tmp_path):
+    with pytest.raises(ValueError):
+        media.local_image(str(tmp_path / "yok.jpg"))
+    txt = tmp_path / "not.jpg"
+    txt.write_text("merhaba")
+    with pytest.raises(ValueError):
+        media.local_image(str(txt))

@@ -142,8 +142,7 @@ def image_size(data: bytes) -> Optional[tuple[str, int, int]]:
 
 # ---------------------------------------------------------------- araç
 
-def _image(ctx: Context, rep: Report, v: dict) -> None:
-    url: str = v["url"]
+def _download(ctx: Context, url: str) -> tuple[bytes, dict]:
     resp = ctx.http.get(url, stream=True, allow_redirects=True)
     try:
         if resp.status_code != 200:
@@ -156,21 +155,54 @@ def _image(ctx: Context, rep: Report, v: dict) -> None:
                 raise OsintError("Dosya 25 MB'tan büyük")
     finally:
         resp.close()
-    data = b"".join(chunks)
+    return b"".join(chunks), {k.lower(): v for k, v in resp.headers.items()}
 
+
+def local_image(value: str) -> dict:
+    """Cihazdaki görselin yolunu okur (uygulamada dosya seçici doldurur, terminalde elle yazılır)."""
+    import os
+    path = os.path.expanduser(value.strip().strip('"'))
+    if not os.path.isfile(path):
+        raise ValueError("Dosya bulunamadı")
+    if os.path.getsize(path) > MAX_IMAGE:
+        raise ValueError("Dosya 25 MB'tan büyük")
+    with open(path, "rb") as f:
+        data = f.read()
+    if not image_size(data) and not data[4:12] in (b"ftypheic", b"ftypmif1", b"ftypheix"):
+        raise ValueError("Desteklenen bir görsel değil (JPEG, PNG, GIF, WebP, HEIC)")
+    return {"display": os.path.basename(path), "path": path, "bytes": data}
+
+
+def _image(ctx: Context, rep: Report, v: dict) -> None:
+    url: str = v["url"]
+    data, headers = _download(ctx, url)
+    analyze_bytes(ctx, rep, data, headers, url=url)
+
+
+def _image_file(ctx: Context, rep: Report, v: dict) -> None:
+    f = v["file"]
+    analyze_bytes(ctx, rep, f["bytes"], {}, name=f["display"])
+
+
+def analyze_bytes(ctx: Context, rep: Report, data: bytes, headers: dict, url: Optional[str] = None,
+                  name: Optional[str] = None) -> None:
     info = rep.section("Dosya")
+    if name:
+        info.add("Dosya adı", name)
     dims = image_size(data)
+    heic = data[4:12] in (b"ftypheic", b"ftypmif1", b"ftypheix")
     if dims:
         fmt, w, h = dims
         info.add("Biçim", fmt)
         if w:
-            info.add("Boyut", f"{w} × {h} px")
+            info.add("Boyut", f"{w} × {h} px ({w * h / 1e6:.1f} MP)")
     else:
-        info.add("Biçim", resp.headers.get("content-type", "bilinmiyor"), level=Level.WARN)
+        info.add("Biçim", "HEIC" if heic else headers.get("content-type", "bilinmiyor"),
+                 level=Level.INFO if heic else Level.WARN)
     info.add("Dosya boyutu", f"{len(data) / 1024:,.1f} KB")
     for label, key in (("Son değişiklik", "last-modified"), ("Sunucu", "server")):
-        if resp.headers.get(key):
-            info.add(label, resp.headers[key])
+        if headers.get(key):
+            info.add(label, headers[key])
     info.add("MD5", hashlib.md5(data).hexdigest())
     sha = hashlib.sha256(data).hexdigest()
     info.add("SHA-256", sha, url=f"https://www.virustotal.com/gui/file/{sha}")
@@ -179,8 +211,10 @@ def _image(ctx: Context, rep: Report, v: dict) -> None:
     exif = parse_exif(data)
     ex = rep.section("EXIF meta verisi")
     if not exif:
-        ex.add("Durum", "EXIF yok" + (" (sosyal medya siteleri genellikle siler)" if dims and dims[0] == "JPEG"
-                                       else ""), level=Level.MUTED)
+        why = ("HEIC biçiminde EXIF okuma henüz desteklenmiyor; fotoğrafı JPEG olarak paylaşın" if heic else
+               "EXIF yok" + (" — sosyal medya ve mesajlaşma uygulamaları genellikle siler" if dims and dims[0] == "JPEG"
+                             else ""))
+        ex.add("Durum", why, level=Level.MUTED)
     labels = (("Make", "Üretici"), ("Model", "Cihaz"), ("LensModel", "Lens"), ("BodySerialNumber", "Seri no"),
               ("Software", "Yazılım"), ("DateTimeOriginal", "Çekim zamanı"), ("OffsetTime", "Saat dilimi"),
               ("DateTime", "Değiştirilme"), ("Artist", "Sanatçı"), ("Copyright", "Telif"),
@@ -189,6 +223,9 @@ def _image(ctx: Context, rep: Report, v: dict) -> None:
         if exif.get(key):
             level = Level.WARN if key in ("BodySerialNumber", "Artist") else Level.OK
             ex.add(label, exif[key], level=level)
+    if exif.get("Software") and any(k in str(exif["Software"]).lower()
+                                    for k in ("photoshop", "gimp", "lightroom", "snapseed", "picsart", "canva")):
+        ex.add("Düzenleme izi", f"Görsel bir düzenleme yazılımından geçmiş ({exif['Software']})", level=Level.WARN)
     if exif.get("ExposureTime"):
         exp = exif["ExposureTime"]
         ex.add("Pozlama", f"1/{round(1 / exp)} sn · f/{exif.get('FNumber', '?')} · ISO {exif.get('ISO', '?')}"
@@ -199,21 +236,42 @@ def _image(ctx: Context, rep: Report, v: dict) -> None:
         gps = rep.section("GPS konumu", note="Fotoğraf bu konumda çekilmiş. Konum çoğu zaman metre hassasiyetindedir.")
         gps.add("Koordinat", f"{lat}, {lon}", url=f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}#map=17/{lat}/{lon}",
                 level=Level.BAD)
-        gps.link("Google Maps", f"https://www.google.com/maps?q={lat},{lon}")
+        if exif.get("GPSAltitude"):
+            gps.add("Rakım", f"{exif['GPSAltitude']:.0f} m" if isinstance(exif["GPSAltitude"], float) else exif["GPSAltitude"])
         if exif.get("GPSDateStamp"):
             gps.add("GPS tarihi", exif["GPSDateStamp"])
+        try:
+            place = ctx.http.json("https://nominatim.openstreetmap.org/reverse",
+                                  params={"lat": lat, "lon": lon, "format": "jsonv2", "accept-language": "tr"},
+                                  headers={"User-Agent": ctx.settings.user_agent})
+            if place and place.get("display_name"):
+                gps.add("Adres", place["display_name"], level=Level.BAD)
+            rep.source("OpenStreetMap", True)
+        except OsintError as e:
+            rep.source("OpenStreetMap", False, str(e).split(": ", 1)[-1])
+        gps.link("Google Maps", f"https://www.google.com/maps?q={lat},{lon}")
+    elif exif and not coords:
+        ex.add("GPS", "Konum bilgisi yok", level=Level.MUTED)
     rep.changed()
 
-    enc = quote(url, safe="")
     rev = rep.section("Tersine görsel arama")
-    rev.link("Google Lens", f"https://lens.google.com/uploadbyurl?url={enc}")
-    rev.link("Yandex", f"https://yandex.com/images/search?rpt=imageview&url={enc}")
-    rev.link("Bing", f"https://www.bing.com/images/search?view=detailv2&iss=sbi&q=imgurl:{enc}")
-    rev.link("TinEye", f"https://tineye.com/search?url={enc}")
-    host = urlsplit(url).hostname or ""
-    rev.add("Kaynak site", host)
+    if url:
+        enc = quote(url, safe="")
+        rev.link("Google Lens", f"https://lens.google.com/uploadbyurl?url={enc}")
+        rev.link("Yandex", f"https://yandex.com/images/search?rpt=imageview&url={enc}")
+        rev.link("Bing", f"https://www.bing.com/images/search?view=detailv2&iss=sbi&q=imgurl:{enc}")
+        rev.link("TinEye", f"https://tineye.com/search?url={enc}")
+        rev.add("Kaynak site", urlsplit(url).hostname or "")
+    else:
+        rev.note = "Cihazdaki görsel için bu sitelere girip fotoğrafı yükleyin."
+        rev.link("Google Lens", "https://lens.google.com/")
+        rev.link("Yandex Görseller", "https://yandex.com/images/")
+        rev.link("Bing Görsel Arama", "https://www.bing.com/visualsearch")
+        rev.link("TinEye", "https://tineye.com/")
 
 
 register(Tool("image", "Görsel Analizi", "EXIF, GPS konumu, hash, tersine arama", "PHOTO_CAMERA", "Görsel & Dosya", [
-    Action("analyze", "Analiz", (Field("url", "Görsel adresi (URL)", "https://…/foto.jpg", "url", parse_url),),
+    Action("file", "Cihazdan fotoğraf", (Field("file", "Fotoğraf", "Fotoğraf seçin", "file", local_image),),
+           _image_file),
+    Action("analyze", "URL'den", (Field("url", "Görsel adresi (URL)", "https://…/foto.jpg", "url", parse_url),),
            _image)]))

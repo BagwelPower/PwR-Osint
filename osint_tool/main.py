@@ -90,6 +90,7 @@ class App:
         self.launcher = ft.UrlLauncher()
         self.clipboard = ft.Clipboard()
         self.share = ft.Share()
+        self.file_picker = ft.FilePicker()
         self.prefill: dict = {}
 
         page.title = "PwR Osint"
@@ -353,6 +354,15 @@ class ToolScreen:
         self.inputs.clear()
         self.fields_col.controls.clear()
         for f in self.action.fields:
+            if f.kind == "file":
+                tf = text_field(f.label, hint_text=f.placeholder, value=prefill.get(f.name, ""), read_only=True,
+                                prefix_icon=ft.Icons.IMAGE)
+                self.inputs[f.name] = tf
+                self.fields_col.controls.append(tf)
+                self.fields_col.controls.append(ft.OutlinedButton(
+                    "Fotoğraf seç", icon=ft.Icons.PHOTO_LIBRARY,
+                    on_click=lambda e, t=tf: self.page.run_task(self.pick_image, t)))
+                continue
             tf = text_field(
                 f.label, hint_text=f.placeholder, value=prefill.get(f.name, ""),
                 keyboard_type=KEYBOARD.get(f.kind, ft.KeyboardType.TEXT),
@@ -381,6 +391,35 @@ class ToolScreen:
         else:
             self.key_banner.content = None
         self.key_banner.visible = self.key_banner.content is not None
+
+    async def pick_image(self, target: ft.TextField) -> None:
+        # Not: Android'in "Fotoğraf Seçici"si (IMAGE türü) GPS bilgisini siler; belge seçici
+        # (CUSTOM + uzantı listesi) orijinal dosyayı verir.
+        try:
+            files = await self.app.file_picker.pick_files(
+                dialog_title="Analiz edilecek fotoğraf", file_type=ft.FilePickerFileType.CUSTOM,
+                allowed_extensions=["jpg", "jpeg", "png", "heic", "heif", "webp", "gif", "tif", "tiff"],
+                with_data=self.page.web)
+        except Exception as ex:
+            self.app.toast(f"Dosya seçilemedi: {ex}")
+            return
+        if not files:
+            return
+        f = files[0]
+        path = f.path
+        if not path and f.bytes:
+            import os
+            import tempfile
+            tmp_dir = os.environ.get("FLET_APP_STORAGE_TEMP") or tempfile.gettempdir()
+            path = os.path.join(tmp_dir, f"pwr_{os.getpid()}_{f.name}")
+            with open(path, "wb") as fh:
+                fh.write(f.bytes)
+        if not path:
+            self.app.toast("Dosyaya erişilemedi")
+            return
+        target.value = path
+        target.error = None
+        self.page.update()
 
     @staticmethod
     def clear_error(e) -> None:
@@ -421,7 +460,7 @@ class ToolScreen:
 
     def on_progress(self, report: Report) -> None:
         now = time.monotonic()
-        if now - self.last_render > 0.25:  # canlı güncelleme, ama ekranı boğmadan
+        if now - self.last_render > 1.0:  # canlı güncelleme, ama telefonu boğmadan
             self.last_render = now
             self.render(report, partial=True)
 
@@ -617,6 +656,10 @@ class ToolScreen:
 
 # ---------------------------------------------------------------- tanılama
 
+# Tanılamada atlananlar: derin tarama çok uzun; dosya seçimi kullanıcı etkileşimi ister.
+DIAG_SKIP = {("username", "deep"), ("image", "file")}
+
+
 class Diagnostics:
     """Her aracı örnek girdiyle bu cihazda çalıştırır; telefondaki gerçek durumu gösterir."""
 
@@ -640,7 +683,7 @@ class Diagnostics:
 
     def worker(self) -> None:
         jobs = [(t, a) for t in all_tools() for a in t.actions
-                if (t.id, a.id) in SAMPLES and (t.id, a.id) != ("username", "deep")]  # derin tarama çok uzun
+                if (t.id, a.id) in SAMPLES and (t.id, a.id) not in DIAG_SKIP]
         counts = {"ok": 0, "warn": 0, "bad": 0}
         for i, (tool, action) in enumerate(jobs, 1):
             if self.ctx.cancel_event.is_set():

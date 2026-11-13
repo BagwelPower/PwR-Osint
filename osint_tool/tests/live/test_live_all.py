@@ -18,7 +18,7 @@ from samples import NEEDS_KEY, SAMPLES
 
 pytestmark = pytest.mark.skipif(os.environ.get("PWR_LIVE") != "1", reason="canlı testler kapalı")
 
-ALL = [(t, a) for t in all_tools() for a in t.actions]
+ALL = [(t, a) for t in all_tools() for a in t.actions if (t.id, a.id) != ("image", "file")]  # yerel dosya: birim testi
 
 
 @pytest.mark.parametrize("tool, action", ALL, ids=[f"{t.id}-{a.id}" for t, a in ALL])

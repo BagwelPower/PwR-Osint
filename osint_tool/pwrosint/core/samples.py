@@ -35,6 +35,7 @@ SAMPLES = {
     ("blacklist", "check"): {"ip": "8.8.8.8"},
     ("crypto", "btc"): {"address": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"},
     ("crypto", "eth"): {"address": "0xde0b295669a9fd93d5f28d9ec85e40f4cb697bae"},
+    ("image", "file"): {"file": ""},  # testler örnek bir JPEG üretip yolunu buraya yazar
     ("image", "analyze"): {"url": "https://raw.githubusercontent.com/ianare/exif-samples/master/jpg/gps/DSCN0010.jpg"},
     ("geo", "coords"): {"coords": "41.0082, 28.9784"},
     ("geo", "bssid"): {"mac": "00:1A:11:00:00:01"},

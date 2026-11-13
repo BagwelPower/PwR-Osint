@@ -195,7 +195,13 @@ def _wmn_sites(data) -> list[dict]:
     return out
 
 
-def wmn_check(ctx: Context, site: dict, user: str, timeout: int = 8) -> tuple[str, str]:
+SCAN_TIMEOUT = 6     # sn; yavaş siteler taramayı bekletmesin
+SCAN_WORKERS = 48
+
+
+def wmn_check(ctx: Context, site: dict, user: str, timeout: int = SCAN_TIMEOUT,
+              http=None) -> tuple[str, str]:
+    http = http or ctx.http
     name = user
     for ch in site.get("strip_bad_char") or "":
         name = name.replace(ch, "")
@@ -204,10 +210,10 @@ def wmn_check(ctx: Context, site: dict, user: str, timeout: int = 8) -> tuple[st
     headers = {"User-Agent": BROWSER_UA, **(site.get("headers") or {})}
     try:
         if site.get("post_body"):
-            resp = ctx.http.post(url, data=site["post_body"].replace("{account}", name), headers=headers,
-                                 timeout=timeout, allow_redirects=True)
+            resp = http.post(url, data=site["post_body"].replace("{account}", name), headers=headers,
+                             timeout=timeout, allow_redirects=True)
         else:
-            resp = ctx.http.get(url, headers=headers, timeout=timeout, allow_redirects=True)
+            resp = http.get(url, headers=headers, timeout=timeout, allow_redirects=True)
     except OsintError as e:
         return UNKNOWN, str(e).split(": ", 1)[-1]
     body = resp.text if len(resp.content) < 3_000_000 else resp.text[:3_000_000]
@@ -223,15 +229,20 @@ def wmn_check(ctx: Context, site: dict, user: str, timeout: int = 8) -> tuple[st
 def _username_deep(ctx: Context, rep: Report, v: dict) -> None:
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    from ..core.http import Http
+
     user = v["username"]
     sites, origin = load_wmn(ctx)
+    # Ayrı, yeniden denemesiz oturum: bozuk sertifikalı/ölü siteler 3 kez denenmesin.
+    scan_http = ctx.http if type(ctx.http) is not Http else Http(ctx.settings.user_agent, SCAN_TIMEOUT,
+                                                                 pool_size=SCAN_WORKERS, retries=0)
     rep.source("WhatsMyName", True, f"{len(sites)} site ({origin})")
     found_sec = rep.section("Bulunan profiller")
     counts = {FOUND: 0, MISSING: 0, UNKNOWN: 0}
     by_cat: dict[str, int] = {}
     done = 0
-    with ThreadPoolExecutor(max_workers=max(16, ctx.settings.max_workers * 2)) as pool:
-        futures = {pool.submit(wmn_check, ctx, s, user): s for s in sites}
+    with ThreadPoolExecutor(max_workers=SCAN_WORKERS) as pool:
+        futures = {pool.submit(wmn_check, ctx, s, user, SCAN_TIMEOUT, scan_http): s for s in sites}
         for fut in as_completed(futures):
             if ctx.cancel_event.is_set():
                 for f in futures:

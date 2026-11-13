@@ -18,12 +18,12 @@ BROWSER_UA = (
 
 
 class Http:
-    def __init__(self, user_agent: str, timeout: int, pool_size: int = 32):
+    def __init__(self, user_agent: str, timeout: int, pool_size: int = 32, retries: int = 2):
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": user_agent, "Accept-Language": "en-US,en;q=0.8"})
-        retry = Retry(total=2, backoff_factor=0.5, status_forcelist=(502, 503, 504),
-                      allowed_methods=("GET", "HEAD"), raise_on_status=False)
+        retry = Retry(total=retries, connect=retries, read=retries, backoff_factor=0.5,
+                      status_forcelist=(502, 503, 504), allowed_methods=("GET", "HEAD"), raise_on_status=False)
         adapter = HTTPAdapter(max_retries=retry, pool_connections=pool_size, pool_maxsize=pool_size)
         self.session.mount("https://", adapter)
         self.session.mount("http://", adapter)
