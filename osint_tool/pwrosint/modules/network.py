@@ -266,10 +266,20 @@ SECURITY_HEADERS = {
 }
 
 
+def _trust_store() -> ssl.SSLContext:
+    """Android'e gömülü Python'da sistem CA deposu boş olabilir; requests'in de
+    kullandığı certifi paketiyle her platformda aynı güven listesi kullanılır."""
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except (ImportError, OSError):
+        return ssl.create_default_context()
+
+
 def fetch_certificate(host: str, port: int, timeout: int) -> dict[str, Any]:
     """Sertifikayı alır. Doğrulama başarısız olsa da ham sertifikayı döndürür."""
     out: dict[str, Any] = {"verified": True, "error": None}
-    ctx = ssl.create_default_context()
+    ctx = _trust_store()
     try:
         with socket.create_connection((host, port), timeout=timeout) as sock, \
                 ctx.wrap_socket(sock, server_hostname=host) as tls:

@@ -10,7 +10,7 @@ on:
 
 # Aynı dal için yeni bir push gelince eski çalıştırma iptal edilir.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 permissions:

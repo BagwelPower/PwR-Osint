@@ -296,3 +296,11 @@ def test_npm_by_search(ctx, http):
     assert person.check_site(ctx, npm, "sindresorhus")[0] == person.FOUND
     http.add("https://registry.npmjs.org/", '{"objects":[],"total":0}')
     assert person.check_site(ctx, npm, "yok")[0] == person.MISSING
+
+
+def test_tls_uses_certifi_bundle():
+    import certifi
+    ctx = network._trust_store()
+    assert ctx.verify_mode.name == "CERT_REQUIRED" and ctx.check_hostname
+    assert ctx.cert_store_stats()["x509_ca"] > 50  # certifi paketi yüklendi
+    assert certifi.where()
