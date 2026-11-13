@@ -91,9 +91,23 @@ class Report:
                 self.notices.append(message)
 
     def highlights(self, limit: int = 8) -> list[tuple[str, Item]]:
-        """Rapordaki kritik (BAD) ve dikkat (WARN) bulguları, önem sırasıyla."""
-        out = [(s.title, i) for lvl in (Level.BAD, Level.WARN) for s in self.sections
-               for i in s.items if i.level == lvl]
+        """Rapordaki kritik (BAD) ve dikkat (WARN) bulgular, önem sırasıyla. Aynı etiketin birçok
+        bölümde tekrarı (ör. her sızıntıdaki 'Sızan veriler') tek satırda toplanır."""
+        out: list[tuple[str, Item]] = []
+        for lvl in (Level.BAD, Level.WARN):
+            groups: dict[str, list[tuple[str, Item]]] = {}
+            for s in self.sections:
+                for i in s.items:
+                    if i.level == lvl:
+                        groups.setdefault(i.label, []).append((s.title, i))
+            for label, entries in groups.items():
+                if len(entries) > 2:
+                    titles = [t.split(" — ")[0] for t, _ in entries]
+                    out.append((f"{len(entries)} bölümde", Item(
+                        label, f"{len(entries)} kayıtta: " + ", ".join(titles[:6]) + (" …" if len(titles) > 6 else ""),
+                        level=lvl)))
+                else:
+                    out.extend(entries)
         return out[:limit]
 
     def error(self, message: str) -> None:

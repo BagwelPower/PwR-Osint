@@ -154,8 +154,8 @@ def internetdb(ctx: Context, rep: Report, ip: str) -> None:
         rep.section("Sonuç").add("Durum", "Bu IP Shodan taramalarında görünmüyor", level=Level.MUTED)
         return
     sec = rep.section("Host (InternetDB)")
-    sec.add("Açık portlar", ", ".join(map(str, db.get("ports") or [])) or "—",
-            level=Level.WARN if db.get("ports") else Level.OK)
+    from ..core.ports import add_ports
+    add_ports(sec, db.get("ports") or [])
     if db.get("hostnames"):
         sec.add("Hostname'ler", ", ".join(db["hostnames"][:15]))
     if db.get("tags"):
@@ -268,18 +268,25 @@ def otx_report(ctx: Context, rep: Report, kind: str, value: str) -> None:
         sec.add("ASN", data["asn"])
     if kind == "file" and data.get("type_title"):
         sec.add("Dosya türü", data["type_title"])
-    tags = sorted({t for p in pulses for t in p.get("tags") or []})
-    families = sorted({m.get("display_name") for p in pulses for m in p.get("malware_families") or []
-                       if isinstance(m, dict) and m.get("display_name")})
+    # Topluluk etiketleri gürültülüdür: birden fazla raporda geçenleri, sıklığa göre göster.
+    from collections import Counter
+    tag_counts = Counter(str(t).strip().lower() for p in pulses for t in set(p.get("tags") or []) if str(t).strip())
+    fam_counts = Counter(m.get("display_name") for p in pulses for m in p.get("malware_families") or []
+                         if isinstance(m, dict) and m.get("display_name"))
+    min_hits = 2 if len(pulses) >= 5 else 1
+    def fmt(name, n):
+        return f"{name} ({n})" if n > 1 else str(name)
+    families = [fmt(f, n) for f, n in fam_counts.most_common(8) if n >= min_hits]
+    tags = [fmt(t, n) for t, n in tag_counts.most_common(15) if n >= min_hits and len(t) > 2]
     if families:
-        sec.add("Zararlı aileleri", ", ".join(families[:10]), level=Level.BAD)
+        sec.add("Zararlı aileleri", ", ".join(families), level=Level.BAD)
     if tags:
-        sec.add("Etiketler", ", ".join(tags[:20]), level=Level.WARN)
+        sec.add("Sık geçen etiketler", ", ".join(tags), level=Level.INFO)
     if pulses:
         ps = rep.section(f"Raporlar ({len(pulses)})")
         for p in pulses[:20]:
             ps.add(p.get("name", "?"), str(p.get("created", ""))[:10],
-                   url=f"https://otx.alienvault.com/pulse/{p.get('id')}", level=Level.WARN)
+                   url=f"https://otx.alienvault.com/pulse/{p.get('id')}")
     rep.section("Link").link("OTX", f"https://otx.alienvault.com/indicator/{kind}/{value}")
 
 

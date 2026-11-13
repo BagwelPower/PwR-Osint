@@ -59,6 +59,26 @@ def text_field(label: str, **kw) -> ft.TextField:
     return ft.TextField(label=label, **kw)
 
 
+PIVOT_TOOLS = {"email", "host", "crypto", "virustotal", "asn"}
+
+
+def pivot_target(it: Item, current_target: str = ""):
+    """Bir sonuç satırının başka bir araçla araştırılabilir değeri varsa öneriyi döndürür.
+    Link satırları (Dış araçlar, profil adresleri) pivotlanmaz; yalnızca düz değerler."""
+    from pwrosint.core.detect import suggest
+    if it.url:
+        return None
+    for candidate in (it.value.strip(), it.label.strip()):
+        if not candidate or len(candidate) > 100 or " " in candidate or "://" in candidate:
+            continue
+        if candidate.lower() == current_target.lower():
+            continue
+        hits = [x for x in suggest(candidate) if x.tool in PIVOT_TOOLS]
+        if hits and ("." in candidate or "@" in candidate or hits[0].tool == "crypto"):
+            return hits[0]
+    return None
+
+
 # ---------------------------------------------------------------- uygulama
 
 class App:
@@ -543,16 +563,9 @@ class ToolScreen:
 
     def pivot_button(self, it: Item) -> Optional[ft.Control]:
         """Sonuçtaki e-posta / IP / domain / kullanıcı adını başka bir araçla araştırma kısayolu."""
-        candidate = (it.value or it.label).strip()
-        if not candidate or len(candidate) > 120 or " " in candidate and "@" not in candidate:
+        s = pivot_target(it, self.report.target if self.report else "")
+        if not s:
             return None
-        if self.report and candidate.lower() == (self.report.target or "").lower():
-            return None
-        from pwrosint.core.detect import suggest
-        hits = [s for s in suggest(candidate) if s.tool not in ("username", "name")] if "." in candidate or "@" in candidate else []
-        if not hits:
-            return None
-        s = hits[0]
 
         def go(e):
             self.app.prefill = {s.field: s.value, "_autorun": True}

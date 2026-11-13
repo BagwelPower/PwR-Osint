@@ -103,7 +103,7 @@ def _btc(ctx: Context, rep: Report, v: dict) -> None:
     sec.add("Toplam gönderilen", f"{sent:.8f} BTC")
     sec.add("İşlem sayısı", chain.get("tx_count", 0))
     if mem.get("tx_count"):
-        sec.add("Onay bekleyen", f"{mem['tx_count']} işlem", level=Level.WARN)
+        sec.add("Onay bekleyen", f"{mem['tx_count']} işlem")
     rep.changed()
 
     txs = [t for t in ctx.http.json(f"https://blockstream.info/api/address/{addr}/txs", expect=list) or []

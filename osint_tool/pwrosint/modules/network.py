@@ -117,8 +117,8 @@ def _ip_profile(ctx: Context, rep: Report, ip: str) -> None:
         if db is not None:
             exp.add("Sonuç", "Kayıt yok", level=Level.MUTED)
     else:
-        exp.add("Portlar", ", ".join(map(str, db["ports"])) or "—",
-                level=Level.WARN if db["ports"] else Level.OK)
+        from ..core.ports import add_ports
+        add_ports(exp, db["ports"], "Portlar")
         if db.get("hostnames"):
             exp.add("Hostname'ler", ", ".join(db["hostnames"][:10]))
         if db.get("tags"):
@@ -261,13 +261,14 @@ def _safe_query(ctx: Context, name: str, rtype: str) -> tuple[str, list[str]]:
 
 # ---------------------------------------------------------------- TLS
 
+# (başlık, görünen ad, eksikse önem, ne işe yarar)
 SECURITY_HEADERS = {
-    "strict-transport-security": "HSTS",
-    "content-security-policy": "CSP",
-    "x-frame-options": "X-Frame-Options",
-    "x-content-type-options": "X-Content-Type-Options",
-    "referrer-policy": "Referrer-Policy",
-    "permissions-policy": "Permissions-Policy",
+    "strict-transport-security": ("HSTS", Level.WARN, "HTTPS'i zorunlu kılar; yoksa bağlantı düşürülebilir"),
+    "content-security-policy": ("CSP", Level.WARN, "XSS saldırılarının etkisini sınırlar"),
+    "x-frame-options": ("X-Frame-Options", Level.WARN, "Clickjacking'e karşı korur"),
+    "x-content-type-options": ("X-Content-Type-Options", Level.INFO, "MIME türü tahminini engeller"),
+    "referrer-policy": ("Referrer-Policy", Level.INFO, "Dışarıya sızan adres bilgisini sınırlar"),
+    "permissions-policy": ("Permissions-Policy", Level.MUTED, "Kamera/konum gibi tarayıcı izinlerini sınırlar"),
 }
 
 
@@ -390,9 +391,16 @@ def _security_headers(ctx: Context, rep: Report, host: str, verify: bool = True)
         return
     sec.add("Son adres", f"{resp.url}  (HTTP {resp.status_code})")
     headers = {k.lower(): v for k, v in resp.headers.items()}
-    for key, label in SECURITY_HEADERS.items():
+    missing = []
+    for key, (label, severity, why) in SECURITY_HEADERS.items():
         val = headers.get(key)
-        sec.add(label, val[:120] if val else "Eksik", level=Level.OK if val else Level.WARN)
+        if val:
+            sec.add(label, val[:120], level=Level.OK)
+        else:
+            sec.add(label, f"Eksik — {why}", level=severity)
+            missing.append(label)
+    present = len(SECURITY_HEADERS) - len(missing)
+    sec.note = f"Güvenlik başlıkları: {present}/{len(SECURITY_HEADERS)} mevcut."
     leaks = [f"{k}: {headers[k]}" for k in ("server", "x-powered-by", "x-aspnet-version") if k in headers]
     if leaks:
         sec.add("Sürüm sızıntısı", "; ".join(leaks), level=Level.INFO)

@@ -139,3 +139,32 @@ def test_report_target_is_human_readable(ctx):
     tool = get_tool("vehicle")
     report = run_action(ctx, tool, tool.action("plate"), {"plate": parse_plate("34abc123")})
     assert report.target == "34 ABC 123"
+
+
+def test_risky_ports_only_flag_dangerous_services():
+    from pwrosint.core.ports import classify
+    assert classify([53, 80, 443]) == []
+    flagged = {p: lvl for p, _, lvl in classify([22, 3389, 6379, 443])}
+    assert flagged == {3389: Level.BAD, 6379: Level.BAD}
+
+
+def test_highlights_collapse_repeats():
+    r = Report("t")
+    for name in ("Adobe", "LinkedIn", "Canva", "Dropbox"):
+        r.section(f"{name} — 2020").add("Sızan veriler", "e-posta, şifre", level=Level.BAD)
+    r.section("Şifre").add("Durum", "sızmış", level=Level.BAD)
+    hl = r.highlights()
+    assert len(hl) == 2
+    assert hl[0][1].label == "Sızan veriler" and "4 kayıtta: Adobe, LinkedIn" in hl[0][1].value
+
+
+def test_pivot_only_on_plain_values():
+    import main
+    from pwrosint.core.report import Item
+    assert main.pivot_target(Item("Abuse iletişim", "abuse@google.com")).tool == "email"
+    assert main.pivot_target(Item("A", "140.82.112.3")).tool == "host"
+    assert main.pivot_target(Item("www.github.com")).tool == "host"
+    assert main.pivot_target(Item("Shodan", "https://www.shodan.io/host/8.8.8.8",
+                                  url="https://www.shodan.io/host/8.8.8.8")) is None
+    assert main.pivot_target(Item("Tür", "Ücretsiz e-posta sağlayıcısı")) is None
+    assert main.pivot_target(Item("Domain", "gmail.com"), current_target="gmail.com") is None

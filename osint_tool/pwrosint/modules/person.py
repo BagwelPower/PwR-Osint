@@ -122,7 +122,7 @@ def _username(ctx: Context, rep: Report, v: dict) -> None:
         elif status == MISSING:
             missing.add(site.name, why, level=Level.MUTED)
         else:
-            unknown.add(site.name, why, url=url, level=Level.WARN)
+            unknown.add(site.name, why, url=url, level=Level.MUTED)
     manual = rep.section("Manuel kontrol", note="Bu siteler giriş istediği için otomatik doğrulanamaz.")
     for s in SITES:
         if s.manual:
