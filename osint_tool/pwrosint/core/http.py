@@ -32,6 +32,8 @@ class Http:
         kw.setdefault("timeout", self.timeout)
         try:
             return self.session.get(url, **kw)
+        except requests.exceptions.SSLError as e:
+            raise OsintError(f"{_host(url)}: SSL sertifikası doğrulanamadı") from e
         except requests.Timeout as e:
             raise OsintError(f"{_host(url)}: zaman aşımı ({kw['timeout']} sn)") from e
         except requests.ConnectionError as e:

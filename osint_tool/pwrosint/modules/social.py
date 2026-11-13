@@ -135,8 +135,8 @@ def _reddit_json(ctx: Context, path: str, **params):
     return None, blocked
 
 
-def _arctic(ctx: Context, kind: str, user: str) -> list[dict]:
-    data = ctx.http.json(f"{ARCTIC}/{kind}/search", params={"author": user, "limit": 100, "sort": "desc"},
+def _arctic(ctx: Context, kind: str, user: str, sort: str = "desc", limit: int = 100) -> list[dict]:
+    data = ctx.http.json(f"{ARCTIC}/{kind}/search", params={"author": user, "limit": limit, "sort": sort},
                          timeout=max(20, ctx.settings.timeout))
     return [x for x in (data or {}).get("data") or [] if isinstance(x, dict) and x.get("created_utc")]
 
@@ -183,8 +183,13 @@ def _reddit(ctx: Context, rep: Report, v: dict) -> None:
                 return
             sec = rep.section("Profil", note="Reddit bu ağdan doğrudan erişimi engelledi; "
                                              "veriler herkese açık Arctic Shift arşivinden alındı.")
-            oldest = min(i["created_utc"] for i in items)
-            sec.add("İlk arşivlenen etkinlik", f"{datetime.fromtimestamp(oldest, timezone.utc):%Y-%m-%d}")
+            try:
+                firsts = _arctic(ctx, "comments", user, "asc", 1) + _arctic(ctx, "posts", user, "asc", 1)
+            except OsintError:
+                firsts = []
+            oldest = min(int(i["created_utc"]) for i in firsts + items)
+            sec.add("İlk görülen etkinlik", f"{datetime.fromtimestamp(oldest, timezone.utc):%Y-%m-%d}  "
+                    f"(hesap en az {(datetime.now(timezone.utc) - datetime.fromtimestamp(oldest, timezone.utc)).days // 365} yaşında)")
             sec.link("Profil", f"https://www.reddit.com/user/{user}")
             rep.changed()
 

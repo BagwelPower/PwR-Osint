@@ -353,17 +353,22 @@ def _tls(ctx: Context, rep: Report, v: dict) -> None:
             san.add(name)
     rep.changed()
 
-    _security_headers(ctx, rep, host)
+    _security_headers(ctx, rep, host, verify=info["verified"])
     links = rep.section("Dış araçlar")
     links.link("SSL Labs", f"https://www.ssllabs.com/ssltest/analyze.html?d={host}&hideResults=on")
     links.link("crt.sh geçmişi", f"https://crt.sh/?q={host}")
     links.link("securityheaders.com", f"https://securityheaders.com/?q={host}&followRedirects=on")
 
 
-def _security_headers(ctx: Context, rep: Report, host: str) -> None:
+def _security_headers(ctx: Context, rep: Report, host: str, verify: bool = True) -> None:
     sec = rep.section("HTTP güvenlik başlıkları")
+    if not verify:
+        sec.note = "Sertifika geçersiz olduğu için başlıklar doğrulamasız bağlantıyla okundu."
     try:
-        resp = ctx.http.get(f"https://{host}/", allow_redirects=True, stream=True)
+        import urllib3
+        with urllib3.warnings.catch_warnings():
+            urllib3.warnings.simplefilter("ignore")
+            resp = ctx.http.get(f"https://{host}/", allow_redirects=True, stream=True, verify=verify)
         resp.close()
     except OsintError as e:
         sec.add("HTTP", str(e), level=Level.MUTED)
@@ -402,8 +407,43 @@ def _anubis(ctx: Context, domain: str) -> set[str]:
     return {str(x) for x in ctx.http.json(f"https://jldc.me/anubis/subdomains/{domain}", expect=list) or []}
 
 
-SUBDOMAIN_SOURCES = (("crt.sh", _crtsh), ("HackerTarget", _hackertarget),
-                     ("AlienVault OTX", _otx), ("Anubis", _anubis))
+def _certspotter(ctx: Context, domain: str) -> set[str]:
+    data = ctx.http.json("https://api.certspotter.com/v1/issuances",
+                         params={"domain": domain, "include_subdomains": "true", "expand": "dns_names"},
+                         expect=list)
+    return {str(n) for e in data or [] if isinstance(e, dict) for n in e.get("dns_names") or []}
+
+
+def _urlscan_hosts(ctx: Context, domain: str) -> set[str]:
+    data = ctx.http.json("https://urlscan.io/api/v1/search/", params={"q": f"domain:{domain}", "size": 100})
+    out = set()
+    for r in (data or {}).get("results") or []:
+        if isinstance(r, dict):
+            for key in ("domain", "apexDomain"):
+                if (val := (r.get("page") or {}).get(key)):
+                    out.add(str(val))
+    return out
+
+
+def _wayback_hosts(ctx: Context, domain: str) -> set[str]:
+    rows = ctx.http.json("https://web.archive.org/cdx/search/cdx",
+                         params={"url": f"*.{domain}", "output": "json", "fl": "original",
+                                 "collapse": "urlkey", "limit": 2000},
+                         timeout=max(30, ctx.settings.timeout), expect=list) or []
+    from urllib.parse import urlsplit
+    out = set()
+    for row in rows[1:]:
+        if isinstance(row, list) and row:
+            url = str(row[0])
+            host = urlsplit(url if "://" in url else "http://" + url).hostname
+            if host:
+                out.add(host)
+    return out
+
+
+SUBDOMAIN_SOURCES = (("crt.sh", _crtsh), ("CertSpotter", _certspotter), ("HackerTarget", _hackertarget),
+                     ("AlienVault OTX", _otx), ("Anubis", _anubis), ("urlscan.io", _urlscan_hosts),
+                     ("Wayback Machine", _wayback_hosts))
 
 
 def clean_subdomains(names: set[str], domain: str) -> set[str]:
@@ -515,7 +555,7 @@ register(Tool("dns", "DNS Kayıtları", "Tüm kayıtlar + SPF/DMARC analizi", "D
     Action("records", "Sorgula", (DOMAIN,), _dns)]))
 register(Tool("tls", "SSL / TLS", "Sertifika, protokol, güvenlik başlıkları", "LOCK", "Ağ & Domain", [
     Action("analyze", "Analiz", (DOMAIN,), _tls)]))
-register(Tool("subdomain", "Subdomain", "4 pasif kaynak + canlılık kontrolü", "ACCOUNT_TREE",
+register(Tool("subdomain", "Subdomain", "7 pasif kaynak + canlılık kontrolü", "ACCOUNT_TREE",
               "Ağ & Domain", [Action("enumerate", "Keşfet", (DOMAIN,), _subdomains)]))
 register(Tool("wayback", "Web Arşivi", "Wayback Machine: eski sayfa ve dosyalar", "HISTORY",
               "Ağ & Domain", [Action("scan", "Tara", (DOMAIN,), _wayback)]))

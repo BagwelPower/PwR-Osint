@@ -14,18 +14,18 @@
 
 | Kategori | Araç | Ne yapar | API anahtarı |
 |---|---|---|---|
-| Kişi | **Kullanıcı Adı** | 24 sitede gerçek kontrol (resmî API'ler, "profil yok" metni tespiti) + giriş isteyen 10 site için manuel kontrol linkleri | — |
+| Kişi | **Kullanıcı Adı** | 23 sitede gerçek kontrol (resmî API'ler, "profil yok" metni tespiti, site engellerse yedek kaynak) + giriş isteyen 11 site için manuel kontrol linkleri | — |
 | | **E-posta** | MX / SPF / DMARC analizi, sağlayıcı tespiti, geçici e-posta tespiti, Gravatar · Permutator (Türkçe karakter desteği) · Hunter.io | Hunter (isteğe bağlı) |
 | | **Telefon** | `phonenumbers` ile geçerlilik, tür (mobil/sabit/VoIP), operatör tahsisi, bölge, saat dilimi, formatlar | — |
 | | **İsim / Soyisim** | Google dork'ları, platform aramaları, akademik/kamu kaynakları, kullanıcı adı adayları | — |
 | Sosyal Medya | **GitHub** | Profil, diller, en popüler repolar, organizasyonlar, **commit'lerden sızan e-postalar**, aktif saatler | GitHub token (isteğe bağlı) |
-| | **Reddit** | Hesap yaşı, karma, en çok yazdığı subreddit'ler, aktif saatlerden **saat dilimi tahmini** | — |
+| | **Reddit** | Hesap yaşı, karma, en çok yazdığı subreddit'ler, aktif saatlerden **saat dilimi tahmini** (Reddit engellerse Arctic Shift arşivi) | — |
 | | **Telegram** | Kullanıcı / kanal / grup ayrımı, abone sayısı, açıklama, fotoğraf | — |
 | | **Mastodon** | Fediverse hesabı, biyografi, sunucunun doğruladığı linkler | — |
 | Ağ & Domain | **IP & Domain** | RDAP WHOIS (kayıt/bitiş tarihi, yeni kayıt uyarısı), konum & ASN, abuse iletişimi, **Shodan InternetDB** ile açık port ve CVE'ler | — |
 | | **DNS** | A, AAAA, CNAME, MX, NS, TXT, SOA, CAA (DNS-over-HTTPS) + SPF/DMARC/CAA değerlendirmesi | — |
 | | **SSL / TLS** | Sertifika doğrulama (bozuk sertifikada bile ayrıntı), kalan süre, SHA-256, protokol, SAN, HTTP güvenlik başlıkları | — |
-| | **Subdomain** | crt.sh, HackerTarget, AlienVault OTX, Anubis + canlılık kontrolü | — |
+| | **Subdomain** | 7 pasif kaynak: crt.sh, CertSpotter, HackerTarget, AlienVault OTX, Anubis, urlscan.io, Wayback + canlılık kontrolü | — |
 | | **Web Arşivi** | Wayback Machine: ilk/son kayıt, ilginç dosyalar (.pdf, .sql, .env…), parametreli URL'ler | — |
 | | **Reverse IP** | Aynı sunucuyu paylaşan diğer domainler | — |
 | | **ASN / BGP** | Ağ sahibi, duyurulan IP blokları, üst sağlayıcılar (RIPEstat) | — |
@@ -136,8 +136,8 @@ Modüller ekrana hiçbir şey yazmaz, bir `Report` doldurur. Terminal, Android v
 ### Testler
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest                        # birim testleri, internet gerekmez
-PWR_LIVE=1 python -m pytest tests/live  # gerçek servislere karşı duman testleri
+python -m pytest                        # birim + sağlamlık testleri (her araç 6 bozuk-ağ senaryosunda), internet gerekmez
+PWR_LIVE=1 python -m pytest tests/live  # her aracın her işlemi gerçek servislere karşı
 ```
 
 ---

@@ -48,6 +48,7 @@ def test_check_site_strategies(ctx, http):
 
 def test_username_report_groups_results(ctx, http):
     http.add("https://", "", status=404)  # varsayılan: hiçbir yerde yok
+    http.add("https://registry.npmjs.org/", '{"objects":[],"total":0}')
     http.add("https://api.github.com/users/ali", {"login": "ali"})
     http.add("https://gitlab.com/", "", status=503)
     report = run(ctx, "username", username="ali")
@@ -198,6 +199,9 @@ def test_subdomains_merge_sources(ctx, http):
     http.add("https://api.hackertarget.com/", "API count exceeded")
     http.add("https://otx.alienvault.com/", {"passive_dns": [{"hostname": "mail.ornek.com"}]})
     http.add("https://jldc.me/", ["www.ornek.com"])
+    http.add("https://api.certspotter.com/", [])
+    http.add("https://urlscan.io/", {"results": []})
+    http.add("https://web.archive.org/", [])
     http.add("https://cloudflare-dns.com/dns-query", {"Status": 3})
     http.add("https://cloudflare-dns.com/dns-query", {"Status": 0, "Answer": [{"type": 1, "data": "1.1.1.1"}]},
              match_params={"name": "www.ornek.com"})
@@ -275,3 +279,20 @@ def test_mac_flags_randomized(ctx, http):
     report = run(ctx, "geo", "bssid", mac="DA:A1:19:00:00:01")
     sec = items(report, "Adres")
     assert sec["Tür"].level == Level.WARN
+
+
+def test_check_site_fallback_when_blocked(ctx, http):
+    reddit = next(s for s in person.SITES if s.name == "Reddit")
+    http.add("https://www.reddit.com/", "Blocked", status=403)
+    http.add("https://arctic-shift.photon-reddit.com/", '{"data":[{"author":"ali"}]}')
+    assert person.check_site(ctx, reddit, "ali")[0] == person.FOUND
+    http.add("https://arctic-shift.photon-reddit.com/", '{"data":[]}')
+    assert person.check_site(ctx, reddit, "ali")[0] == person.UNKNOWN  # yokluk kanıtlanamaz
+
+
+def test_npm_by_search(ctx, http):
+    npm = next(s for s in person.SITES if s.name == "npm")
+    http.add("https://registry.npmjs.org/", '{"objects":[{}],"total":3}')
+    assert person.check_site(ctx, npm, "sindresorhus")[0] == person.FOUND
+    http.add("https://registry.npmjs.org/", '{"objects":[],"total":0}')
+    assert person.check_site(ctx, npm, "yok")[0] == person.MISSING

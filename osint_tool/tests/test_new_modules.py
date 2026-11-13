@@ -359,7 +359,7 @@ def test_reddit_blocked_falls_back_to_archive(ctx, http):
     report = run(ctx, "reddit", username="ali")
     assert not report.errors
     prof = items(report, "Profil")
-    assert prof["İlk arşivlenen etkinlik"].value == "2017-07-14"
+    assert prof["İlk görülen etkinlik"].value.startswith("2017-07-14")
     assert "Arctic Shift" in next(s.title for s in report.sections if s.title.startswith("Aktivite"))
 
 
@@ -367,3 +367,11 @@ def test_reddit_not_found(ctx, http):
     http.add("https://www.reddit.com/user/yok/about.json", {"error": 404}, status=404)
     report = run(ctx, "reddit", username="yok")
     assert items(report, "Sonuç")["Durum"].level == Level.MUTED and not report.errors
+
+
+def test_password_strength():
+    from pwrosint.modules.threat import password_strength
+    weak = dict((l, (v, lv)) for l, v, lv in password_strength("galatasaray1905"))
+    assert weak["Değerlendirme"][1] == Level.BAD and "Tahmin edilebilir kalıp" in weak
+    strong = dict((l, (v, lv)) for l, v, lv in password_strength("k9#Vq!2zR@pL7m$w"))
+    assert strong["Değerlendirme"][0].startswith("Güçlü")

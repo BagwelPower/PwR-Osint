@@ -66,6 +66,30 @@ def pwned_count(ctx: Context, password: str) -> int:
     return 0
 
 
+COMMON_PATTERNS = ("123", "qwe", "asd", "abc", "password", "sifre", "şifre", "parola", "admin", "1907",
+                   "1905", "1903", "1967", "galatasaray", "fenerbahce", "besiktas", "trabzon")
+
+
+def password_strength(pw: str) -> list[tuple[str, str, Level]]:
+    import math
+    classes = [("küçük harf", any(c.islower() for c in pw)), ("büyük harf", any(c.isupper() for c in pw)),
+               ("rakam", any(c.isdigit() for c in pw)), ("sembol", any(not c.isalnum() for c in pw))]
+    pool = sum(n for (_, has), n in zip(classes, (26, 26, 10, 32)) if has) or 1
+    bits = len(pw) * math.log2(pool)
+    found = [p for p in COMMON_PATTERNS if p in pw.lower()]
+    if found:
+        bits = min(bits, 28)
+    verdict, level = ((("Çok zayıf", Level.BAD) if bits < 28 else ("Zayıf", Level.BAD) if bits < 40
+                      else ("Orta", Level.WARN) if bits < 60 else ("Güçlü", Level.OK)))
+    out = [("Değerlendirme", f"{verdict} (~{bits:.0f} bit)", level),
+           ("Uzunluk", f"{len(pw)} karakter", Level.OK if len(pw) >= 12 else Level.WARN),
+           ("Karakter çeşitleri", ", ".join(n for n, has in classes if has) or "—",
+            Level.OK if sum(h for _, h in classes) >= 3 else Level.WARN)]
+    if found:
+        out.append(("Tahmin edilebilir kalıp", ", ".join(found), Level.BAD))
+    return out
+
+
 def _hibp_password(ctx: Context, rep: Report, v: dict) -> None:
     count = pwned_count(ctx, v["password"])
     sec = rep.section("Sonuç")
@@ -76,6 +100,9 @@ def _hibp_password(ctx: Context, rep: Report, v: dict) -> None:
         sec.add("Durum", "Bilinen sızıntılarda bulunamadı", level=Level.OK)
     sec.note = ("Şifre cihazdan çıkmaz: yalnızca SHA-1 özetinin ilk 5 karakteri gönderilir "
                 "(k-anonimlik).")
+    strength = rep.section("Şifre gücü (cihazda hesaplandı)")
+    for label, value, level in password_strength(v["password"]):
+        strength.add(label, value, level=level)
 
 
 # ---------------------------------------------------------------- Shodan

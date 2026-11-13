@@ -98,8 +98,13 @@ def test_github_profile():
 
 
 def test_reddit_profile():
+    # Reddit bulut IP'lerini engelleyebilir; o durumda arşiv yolu da gerçek veri vermeli.
     r = run("reddit", username="spez")
-    assert section(r, "Profil")["Oluşturulma"].value.startswith("2005")
+    assert not r.errors
+    prof = section(r, "Profil")
+    first = prof.get("Oluşturulma") or prof.get("İlk görülen etkinlik")
+    assert first and first.value[:4] in ("2005", "2006", "2007")
+    assert "r/" in section(r, "Aktivite")["En çok yazdığı subreddit'ler"].value
 
 
 def test_telegram_channel():

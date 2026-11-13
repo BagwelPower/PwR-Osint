@@ -25,17 +25,22 @@ class Site:
     absent: Optional[str] = None     # bu metin varsa profil YOK
     present: Optional[str] = None    # bu metin yoksa profil YOK
     manual: bool = False             # otomatik doğrulanamıyor (giriş/bot koruması)
+    fallback: Optional[str] = None   # site 403/429 ile engellerse sorulacak yedek kaynak
+    fallback_present: Optional[str] = None  # yedek yanıtta bu metin varsa profil VAR
 
 
 SITES: tuple[Site, ...] = (
     Site("GitHub", "https://github.com/{}", "https://api.github.com/users/{}"),
     Site("GitLab", "https://gitlab.com/{}", "https://gitlab.com/api/v4/users?username={}", absent="[]"),
-    Site("Reddit", "https://www.reddit.com/user/{}", "https://www.reddit.com/user/{}/about.json"),
+    Site("Reddit", "https://www.reddit.com/user/{}", "https://www.reddit.com/user/{}/about.json",
+         fallback="https://arctic-shift.photon-reddit.com/api/comments/search?author={}&limit=1",
+         fallback_present='"author"'),
     Site("Keybase", "https://keybase.io/{}",
          "https://keybase.io/_/api/1.0/user/lookup.json?usernames={}", absent='"them":[null]'),
     Site("Docker Hub", "https://hub.docker.com/u/{}", "https://hub.docker.com/v2/users/{}/"),
     Site("PyPI", "https://pypi.org/user/{}/"),
-    Site("npm", "https://www.npmjs.com/~{}", "https://registry.npmjs.org/-/user/org.couchdb.user:{}"),
+    Site("npm", "https://www.npmjs.com/~{}",
+         "https://registry.npmjs.org/-/v1/search?text=maintainer:{}&size=1", absent='"total":0'),
     Site("Hacker News", "https://news.ycombinator.com/user?id={}",
          "https://hacker-news.firebaseio.com/v0/user/{}.json", absent="null"),
     Site("Dev.to", "https://dev.to/{}", "https://dev.to/api/users/by_username?url={}"),
@@ -52,7 +57,6 @@ SITES: tuple[Site, ...] = (
     Site("Kaggle", "https://www.kaggle.com/{}"),
     Site("Replit", "https://replit.com/@{}"),
     Site("Bitbucket", "https://bitbucket.org/{}/", "https://api.bitbucket.org/2.0/workspaces/{}"),
-    Site("Codeberg", "https://codeberg.org/{}", "https://codeberg.org/api/v1/users/{}"),
     Site("Hugging Face", "https://huggingface.co/{}", "https://huggingface.co/api/users/{}/overview"),
     Site("Mastodon (social)", "https://mastodon.social/@{}",
          "https://mastodon.social/api/v1/accounts/lookup?acct={}"),
@@ -69,6 +73,7 @@ SITES: tuple[Site, ...] = (
     Site("Pinterest", "https://www.pinterest.com/{}/", manual=True),
     Site("Medium", "https://medium.com/@{}", manual=True),
     Site("Spotify", "https://open.spotify.com/user/{}", manual=True),
+    Site("Codeberg", "https://codeberg.org/{}", manual=True),
 )
 
 FOUND, MISSING, UNKNOWN = "found", "missing", "unknown"
@@ -84,6 +89,14 @@ def check_site(ctx: Context, site: Site, user: str) -> tuple[str, str]:
     code = resp.status_code
     if code in (404, 410):
         return MISSING, "404"
+    if code in (403, 429) and site.fallback:
+        try:
+            fb = ctx.http.get(site.fallback.format(quote(user, safe="")))
+            if fb.status_code == 200 and site.fallback_present and site.fallback_present in fb.text:
+                return FOUND, ""
+        except OsintError:
+            pass
+        return UNKNOWN, f"HTTP {code} (site engelledi)"
     if code != 200:
         return UNKNOWN, f"HTTP {code}"
     body = resp.text
