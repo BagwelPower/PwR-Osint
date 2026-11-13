@@ -224,3 +224,10 @@ def test_username_deep_whatsmyname():
     assert not r.errors
     assert len(section(r, "Bulunan")) >= 10, r.summary
     assert took < 120, f"derin tarama çok yavaş: {took:.0f} sn"
+
+
+def test_fullscan_real_domain():
+    r = run("fullscan", "scan", domain="github.com")
+    assert not r.errors
+    prefixes = {s.title.split(" · ")[0] for s in r.sections}
+    assert {"Altyapı", "DNS", "TLS", "Subdomain", "Site", "Arşiv", "Taklit"} <= prefixes, prefixes

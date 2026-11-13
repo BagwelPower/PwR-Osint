@@ -165,3 +165,17 @@ def test_unreachable_is_not_reported_as_absent(ctx, http):
     report = run(ctx, "email", email="ali@gmail.com")
     assert "ulaşılamadı" in items(report, "Gravatar profili")["Profil"].value
     assert "ulaşılamadı" in items(report, "Sızıntı özeti")["Durum"].value
+
+
+def test_fullscan_merges_all_tools(ctx, http, monkeypatch):
+    import socket
+    from pwrosint.core.errors import OsintError
+    monkeypatch.setattr(socket, "create_connection", lambda *a, **k: (_ for _ in ()).throw(OSError("ağ yok")))
+    http.add("https://", OsintError("ağ yok"))
+    http.add("https://cloudflare-dns.com/dns-query", {"Status": 0, "Answer": [{"type": 1, "data": "1.2.3.4"}]})
+    report = run(ctx, "fullscan", domain="ornek.com")
+    assert not [e for e in report.errors if "Beklenmeyen" in e]
+    prefixes = {s.title.split(" · ")[0] for s in report.sections}
+    assert {"Altyapı", "DNS"} <= prefixes
+    assert report.summary.startswith("8 araç tamamlandı")
+    assert any(n.startswith("TLS aracı") for n, ok, _ in report.sources if not ok)  # TLS hatası kaynak durumunda

@@ -742,7 +742,7 @@ class ToolScreen:
 # ---------------------------------------------------------------- tanılama
 
 # Tanılamada atlananlar: derin tarama çok uzun; dosya seçimi kullanıcı etkileşimi ister.
-DIAG_SKIP = {("username", "deep"), ("image", "file")}
+DIAG_SKIP = {("username", "deep"), ("image", "file"), ("fullscan", "scan")}
 
 
 class Diagnostics:

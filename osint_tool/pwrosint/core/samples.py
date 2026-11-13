@@ -14,6 +14,7 @@ SAMPLES = {
     ("fediverse", "profile"): {"handle": "Gargron@mastodon.social"},
     ("host", "profile"): {"target": "github.com"},
     ("dns", "records"): {"domain": "github.com"},
+    ("fullscan", "scan"): {"domain": "github.com"},
     ("tls", "analyze"): {"domain": "github.com"},
     ("subdomain", "enumerate"): {"domain": "example.com"},
     ("wayback", "scan"): {"domain": "example.com"},

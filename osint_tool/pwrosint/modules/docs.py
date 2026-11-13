@@ -51,6 +51,13 @@ TOOL_DOCS: dict[str, tuple[str, tuple[str, ...], str]] = {
         "abuse iletişimi, açık portlar, tespit edilen yazılımlar ve bilinen zafiyetler (CVE).",
         ("DNS-over-HTTPS", "RDAP", "ipinfo.io", "Shodan InternetDB"),
         "IP konumu ağ bloğunun kayıtlı yeridir, kişinin konumu değildir. .tr uzantıları RDAP sunmaz."),
+    "fullscan": (
+        "Bir domain için kapsamlı keşif: WHOIS ve altyapı, açık portlar ve CVE'ler, DNS ve e-posta güvenliği, "
+        "SSL/TLS ve güvenlik başlıkları, subdomain'ler, site teknolojisi ve iletişim bilgileri, urlscan "
+        "geçmişi, web arşivi ve kayıtlı taklit domainler. Tüm bulgular tek raporda, önem sırasıyla.",
+        ("Tüm Ağ & Domain ve Web araçlarının kaynakları",),
+        "Tamamı 1-3 dakika sürebilir; tarama sırasında iptal edilebilir. Hedefe yalnızca birkaç sayfa isteği "
+        "gönderilir, port taraması yapılmaz."),
     "dns": (
         "A, AAAA, CNAME, MX, NS, TXT, SOA, CAA kayıtlarını sorgular; SPF, DMARC ve CAA politikalarını "
         "değerlendirip domainin hangi servisleri kullandığını doğrulama kayıtlarından çıkarır.",

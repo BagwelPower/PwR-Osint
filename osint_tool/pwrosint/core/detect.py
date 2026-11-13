@@ -109,6 +109,7 @@ def suggest(raw: str) -> list[Suggestion]:
     try:
         dom = validate.domain(text)
         if "." in text:
+            add("fullscan", "scan", "domain", dom, "Tam domain taraması (8 araç)")
             add("host", "profile", "target", dom, "Domain")
             add("dns", "records", "domain", dom, "DNS kayıtları")
             add("subdomain", "enumerate", "domain", dom, "Subdomain")

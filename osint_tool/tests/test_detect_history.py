@@ -14,7 +14,7 @@ from pwrosint.core.registry import get_tool
     ("41.0082, 28.9784", "geo", "coords"),
     ("1HGCM82633A004352", "vehicle", "vin"),
     ("34 ABC 123", "vehicle", "plate"),
-    ("github.com", "host", "profile"),
+    ("github.com", "fullscan", "scan"),
     ("Ahmet Yılmaz", "name", "search"),
     ("torvalds", "username", "scan"),
     ("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", "crypto", "btc"),
