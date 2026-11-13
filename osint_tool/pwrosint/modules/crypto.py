@@ -90,8 +90,8 @@ def _fiat(amount: float, price: dict) -> str:
 
 def _btc(ctx: Context, rep: Report, v: dict) -> None:
     addr: str = v["address"]
-    data = ctx.http.json(f"https://blockstream.info/api/address/{addr}")
-    chain, mem = data.get("chain_stats", {}), data.get("mempool_stats", {})
+    data = ctx.http.json(f"https://blockstream.info/api/address/{addr}") or {}
+    chain, mem = data.get("chain_stats") or {}, data.get("mempool_stats") or {}
     received = chain.get("funded_txo_sum", 0) / 1e8
     sent = chain.get("spent_txo_sum", 0) / 1e8
     balance = received - sent
@@ -106,7 +106,8 @@ def _btc(ctx: Context, rep: Report, v: dict) -> None:
         sec.add("Onay bekleyen", f"{mem['tx_count']} işlem", level=Level.WARN)
     rep.changed()
 
-    txs = ctx.http.json(f"https://blockstream.info/api/address/{addr}/txs") or []
+    txs = [t for t in ctx.http.json(f"https://blockstream.info/api/address/{addr}/txs", expect=list) or []
+           if isinstance(t, dict) and t.get("txid")]
     if txs:
         t = rep.section(f"Son işlemler ({len(txs)})")
         for tx in txs[:25]:
@@ -129,7 +130,7 @@ def _btc(ctx: Context, rep: Report, v: dict) -> None:
 
 def _eth(ctx: Context, rep: Report, v: dict) -> None:
     addr: str = v["address"]
-    data = ctx.http.json(f"https://api.blockcypher.com/v1/eth/main/addrs/{addr[2:]}/balance")
+    data = ctx.http.json(f"https://api.blockcypher.com/v1/eth/main/addrs/{addr[2:]}/balance") or {}
     bal = int(data.get("balance", 0)) / 1e18
     price = _prices(ctx).get("ethereum", {})
     sec = rep.section("Adres")

@@ -328,9 +328,11 @@ def _files(ctx: Context, rep: Report, v: dict) -> None:
 def _urlscan(ctx: Context, rep: Report, v: dict) -> None:
     domain: str = v["domain"]
     data = ctx.http.json("https://urlscan.io/api/v1/search/", params={"q": f"domain:{domain}", "size": 50})
-    results = data.get("results") or []
-    rep.summary = f"urlscan.io'da {data.get('total', len(results))} tarama bulundu."
+    results = [r for r in (data or {}).get("results") or [] if isinstance(r, dict)]
+    rep.summary = f"urlscan.io'da {(data or {}).get('total', len(results))} tarama bulundu."
     if not results:
+        rep.section("Sonuç").add("Durum", "Bu domain için urlscan.io'da tarama yok", level=Level.MUTED)
+        rep.section("Dış araçlar").link("Yeni tarama başlat", f"https://urlscan.io/")
         return
     ips = sorted({(r.get("page") or {}).get("ip", "") for r in results} - {""})
     countries = sorted({(r.get("page") or {}).get("country", "") for r in results} - {""})

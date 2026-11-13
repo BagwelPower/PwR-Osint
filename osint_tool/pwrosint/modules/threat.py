@@ -35,7 +35,12 @@ def _hibp_email(ctx: Context, rep: Report, v: dict) -> None:
         raise OsintError("HIBP: istek limiti aşıldı, birkaç saniye sonra tekrar deneyin")
     if resp.status_code != 200:
         raise OsintError(f"HIBP: HTTP {resp.status_code}")
-    breaches = sorted(resp.json(), key=lambda b: b.get("BreachDate", ""), reverse=True)
+    from ..core.http import parse_json
+    breaches = sorted((b for b in parse_json(resp, list) if isinstance(b, dict)),
+                      key=lambda b: b.get("BreachDate", ""), reverse=True)
+    if not breaches:
+        rep.section("Sonuç").add("Durum", "Bilinen hiçbir sızıntıda bulunamadı", level=Level.OK)
+        return
     rep.summary = f"{len(breaches)} sızıntıda bulundu."
     for b in breaches:
         sec = rep.section(f"{b.get('Title', b.get('Name'))} — {b.get('BreachDate', '?')}")
@@ -92,8 +97,9 @@ def _shodan_host(ctx: Context, rep: Report, v: dict) -> None:
     vulns = sorted(data.get("vulns") or [])
     if vulns:
         sec.add("Zafiyetler", ", ".join(vulns[:20]), level=Level.BAD)
-    svc = rep.section(f"Servisler ({len(data.get('data', []))})")
-    for s in sorted(data.get("data", []), key=lambda s: s.get("port", 0)):
+    services = [s for s in data.get("data") or [] if isinstance(s, dict)]
+    svc = rep.section(f"Servisler ({len(services)})")
+    for s in sorted(services, key=lambda s: s.get("port", 0)):
         desc = " ".join(x for x in (s.get("product"), s.get("version")) if x) or s.get("_shodan", {}).get("module", "")
         svc.add(f"{s.get('port')}/{s.get('transport', 'tcp')}", desc or "—")
     rep.section("Link").link("Shodan", f"https://www.shodan.io/host/{v['ip']}")
@@ -105,7 +111,7 @@ def _shodan_search(ctx: Context, rep: Report, v: dict) -> None:
                          params={"key": key, "query": v["query"], "minify": "true"})
     rep.summary = f"Toplam {data.get('total', 0):,} sonuç (ilk 100 gösteriliyor).".replace(",", ".")
     sec = rep.section("Eşleşmeler")
-    for m in data.get("matches", [])[:100]:
+    for m in [m for m in data.get("matches") or [] if isinstance(m, dict)][:100]:
         where = ", ".join(x for x in (m.get("org"), (m.get("location") or {}).get("country_name")) if x)
         sec.add(f"{m.get('ip_str')}:{m.get('port')}", where,
                 url=f"https://www.shodan.io/host/{m.get('ip_str')}")

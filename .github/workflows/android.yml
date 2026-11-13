@@ -2,10 +2,16 @@ name: CI & Android APK
 
 on:
   push:
-    branches: ["**"]
+    branches: [main, "claude/**"]
     tags: ["v*"]
   pull_request:
+    branches: [main]
   workflow_dispatch:
+
+# Aynı dal için yeni bir push gelince eski çalıştırma iptal edilir.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -47,6 +53,7 @@ jobs:
       - run: python -m pytest -v tests/live -rA
         env:
           PWR_LIVE: "1"
+          PYTHONPATH: tests
 
   build-apk:
     needs: test
@@ -67,10 +74,16 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
           PYTHONUTF8: "1"
-        run: >
-          flet build apk --yes --verbose
-          --exclude tests osint_tool.py requirements.txt requirements-dev.txt config.json.example
-          --build-version "2.1.${{ github.run_number }}" --build-number "${{ github.run_number }}"
+        # Gradle, Python dağıtımını indirirken ara sıra bozuk dosya alabiliyor; bir kez daha dene.
+        run: |
+          for attempt in 1 2; do
+            flet build apk --yes --verbose \
+              --exclude tests osint_tool.py requirements.txt requirements-dev.txt config.json.example \
+              --build-version "2.1.${{ github.run_number }}" --build-number "${{ github.run_number }}" && exit 0
+            echo "::warning::APK derlemesi başarısız (deneme $attempt), önbellek temizlenip tekrar deneniyor"
+            rm -rf build ~/.gradle/caches/*/download-* 2>/dev/null || true
+          done
+          exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: PwR-Osint-apk

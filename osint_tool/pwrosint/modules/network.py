@@ -382,8 +382,8 @@ def _security_headers(ctx: Context, rep: Report, host: str) -> None:
 
 def _crtsh(ctx: Context, domain: str) -> set[str]:
     data = ctx.http.json("https://crt.sh/", params={"q": f"%.{domain}", "output": "json"},
-                         timeout=max(30, ctx.settings.timeout))
-    return {n for e in data or [] for n in e.get("name_value", "").split("\n")}
+                         timeout=max(30, ctx.settings.timeout), expect=list)
+    return {n for e in data or [] if isinstance(e, dict) for n in str(e.get("name_value", "")).split("\n")}
 
 
 def _hackertarget(ctx: Context, domain: str) -> set[str]:
@@ -395,11 +395,11 @@ def _hackertarget(ctx: Context, domain: str) -> set[str]:
 
 def _otx(ctx: Context, domain: str) -> set[str]:
     data = ctx.http.json(f"https://otx.alienvault.com/api/v1/indicators/domain/{domain}/passive_dns")
-    return {r.get("hostname", "") for r in data.get("passive_dns", [])}
+    return {str(r.get("hostname", "")) for r in (data or {}).get("passive_dns") or [] if isinstance(r, dict)}
 
 
 def _anubis(ctx: Context, domain: str) -> set[str]:
-    return set(ctx.http.json(f"https://jldc.me/anubis/subdomains/{domain}") or [])
+    return {str(x) for x in ctx.http.json(f"https://jldc.me/anubis/subdomains/{domain}", expect=list) or []}
 
 
 SUBDOMAIN_SOURCES = (("crt.sh", _crtsh), ("HackerTarget", _hackertarget),
@@ -463,9 +463,9 @@ def _wayback(ctx: Context, rep: Report, v: dict) -> None:
     cdx = "https://web.archive.org/cdx/search/cdx"
     sec = rep.section("Arşiv özeti")
     first = ctx.http.json(cdx, params={"url": domain, "output": "json", "fl": "timestamp", "limit": 1},
-                          timeout=max(30, ctx.settings.timeout))
+                          timeout=max(30, ctx.settings.timeout), expect=list)
     last = ctx.http.json(cdx, params={"url": domain, "output": "json", "fl": "timestamp", "limit": -1},
-                         timeout=max(30, ctx.settings.timeout))
+                         timeout=max(30, ctx.settings.timeout), expect=list)
     if not first or len(first) < 2:
         sec.add("Sonuç", "Bu domain hiç arşivlenmemiş", level=Level.MUTED)
         return
@@ -477,8 +477,8 @@ def _wayback(ctx: Context, rep: Report, v: dict) -> None:
     rows = ctx.http.json(cdx, params={
         "url": f"{domain}/*", "output": "json", "fl": "timestamp,original,statuscode,mimetype",
         "collapse": "urlkey", "filter": "statuscode:200", "limit": 400,
-    }, timeout=max(30, ctx.settings.timeout)) or []
-    urls = rows[1:]
+    }, timeout=max(30, ctx.settings.timeout), expect=list) or []
+    urls = [r for r in rows[1:] if isinstance(r, list) and len(r) >= 2]
     interesting_ext = (".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".sql", ".zip", ".bak",
                        ".env", ".json", ".xml", ".txt", ".log", ".conf", ".config")
     files = [r for r in urls if r[1].lower().split("?")[0].endswith(interesting_ext)]
@@ -591,7 +591,8 @@ def _asn(ctx: Context, rep: Report, v: dict) -> None:
         sec.add("Kayıt bloğu", block["desc"])
     rep.changed()
 
-    prefixes = [p["prefix"] for p in (_ripe(ctx, "announced-prefixes", target).get("prefixes") or [])]
+    prefixes = [p["prefix"] for p in (_ripe(ctx, "announced-prefixes", target).get("prefixes") or [])
+                if isinstance(p, dict) and p.get("prefix")]
     v4 = [p for p in prefixes if ":" not in p]
     v6 = [p for p in prefixes if ":" in p]
     total = sum(ipaddress.ip_network(p).num_addresses for p in v4)
@@ -604,7 +605,7 @@ def _asn(ctx: Context, rep: Report, v: dict) -> None:
     if neigh:
         up = [n for n in neigh if n.get("type") == "left"]
         n = rep.section("Komşular", note="'Üst' komşular bu ağa internet erişimi sağlayan sağlayıcılardır.")
-        n.add("Üst sağlayıcılar", ", ".join(f"AS{x['asn']}" for x in sorted(up, key=lambda x: -x.get("power", 0))[:10]) or "—")
+        n.add("Üst sağlayıcılar", ", ".join(f"AS{x.get('asn')}" for x in sorted(up, key=lambda x: -x.get("power", 0))[:10]) or "—")
         n.add("Toplam komşu", len(neigh))
     links = rep.section("Dış araçlar")
     num = target[2:]

@@ -335,3 +335,35 @@ def test_reverse_ip_limit_message(ctx, http):
     http.add("https://api.hackertarget.com/reverseiplookup/", "API count exceeded - Increase Quota")
     report = run(ctx, "reverseip", target="8.8.8.8")
     assert "limit" in report.errors[0]
+
+
+def test_reddit_direct(ctx, http):
+    http.add("https://www.reddit.com/user/ali/about.json", {"data": {"created_utc": 1136073600, "link_karma": 5,
+                                                                     "comment_karma": 7, "is_mod": True}})
+    http.add("https://www.reddit.com/user/ali/comments.json",
+             {"data": {"children": [{"data": {"subreddit": "Turkey", "created_utc": 1700000000}}]}})
+    http.add("https://www.reddit.com/user/ali/submitted.json", {"data": {"children": []}})
+    report = run(ctx, "reddit", username="ali")
+    assert not report.errors
+    assert items(report, "Profil")["Oluşturulma"].value.startswith("2006-01-01")
+    assert "r/Turkey (1)" in items(report, "Aktivite")["En çok yazdığı subreddit'ler"].value
+
+
+def test_reddit_blocked_falls_back_to_archive(ctx, http):
+    for host in ("https://www.reddit.com", "https://old.reddit.com", "https://api.reddit.com"):
+        http.add(host, "Blocked", status=403)
+    http.add("https://arctic-shift.photon-reddit.com/api/comments/search",
+             {"data": [{"subreddit": "Turkey", "created_utc": 1600000000}]})
+    http.add("https://arctic-shift.photon-reddit.com/api/posts/search",
+             {"data": [{"subreddit": "istanbul", "created_utc": 1500000000}]})
+    report = run(ctx, "reddit", username="ali")
+    assert not report.errors
+    prof = items(report, "Profil")
+    assert prof["İlk arşivlenen etkinlik"].value == "2017-07-14"
+    assert "Arctic Shift" in next(s.title for s in report.sections if s.title.startswith("Aktivite"))
+
+
+def test_reddit_not_found(ctx, http):
+    http.add("https://www.reddit.com/user/yok/about.json", {"error": 404}, status=404)
+    report = run(ctx, "reddit", username="yok")
+    assert items(report, "Sonuç")["Durum"].level == Level.MUTED and not report.errors

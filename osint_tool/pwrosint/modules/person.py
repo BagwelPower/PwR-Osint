@@ -235,8 +235,10 @@ def _permutator(ctx: Context, rep: Report, v: dict) -> None:
 
 def _hunter(ctx: Context, rep: Report, v: dict) -> None:
     key = ctx.require("hunter_api_key", "Hunter.io")
-    data = ctx.http.json("https://api.hunter.io/v2/domain-search",
-                         params={"domain": v["domain"], "api_key": key, "limit": 50})["data"]
+    data = (ctx.http.json("https://api.hunter.io/v2/domain-search",
+                          params={"domain": v["domain"], "api_key": key, "limit": 50}) or {}).get("data")
+    if not isinstance(data, dict):
+        raise OsintError("Hunter.io: beklenmeyen yanıt")
     info = rep.section("Domain")
     info.add("Organizasyon", data.get("organization") or "—")
     info.add("Adres şablonu", data.get("pattern") or "—")

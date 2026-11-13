@@ -39,17 +39,27 @@ class Http:
         except requests.RequestException as e:
             raise OsintError(f"{_host(url)}: {e}") from e
 
-    def json(self, url: str, *, ok: tuple[int, ...] = (200,), **kw: Any) -> Any:
-        """GET + JSON. ``ok`` dışındaki durum kodlarında OsintError fırlatır."""
+    def json(self, url: str, *, ok: tuple[int, ...] = (200,), expect: type = dict, **kw: Any) -> Any:
+        """GET + JSON. ``ok`` dışındaki durum kodlarında, JSON olmayan ya da beklenen
+        türde (``dict``/``list``) olmayan yanıtlarda OsintError fırlatır. Başarılı bir
+        yanıtın gövdesi boşsa ``None`` döner."""
         resp = self.get(url, **kw)
         if resp.status_code not in ok:
             raise OsintError(f"{_host(url)}: HTTP {resp.status_code}{_hint(resp.status_code)}")
         if resp.status_code == 204 or not resp.content:
             return None
-        try:
-            return resp.json()
-        except ValueError as e:
-            raise OsintError(f"{_host(url)}: geçersiz JSON yanıtı") from e
+        return parse_json(resp, expect)
+
+
+def parse_json(resp: requests.Response, expect: type = dict) -> Any:
+    host = _host(resp.url or "")
+    try:
+        data = resp.json()
+    except ValueError as e:
+        raise OsintError(f"{host}: geçersiz yanıt (JSON değil)") from e
+    if not isinstance(data, expect):
+        raise OsintError(f"{host}: beklenmeyen yanıt biçimi")
+    return data
 
 
 def _host(url: str) -> str:

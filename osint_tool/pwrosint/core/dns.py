@@ -23,10 +23,13 @@ def query(ctx: Context, name: str, rtype: str) -> tuple[str, list[str]]:
         except OsintError as e:
             last_error = e
             continue
+        if not data:
+            last_error = OsintError(f"{url}: boş yanıt")
+            continue
         status = RCODES.get(data.get("Status", 2), str(data.get("Status")))
         want = _TYPE_CODES.get(rtype)
-        answers = [a["data"] for a in data.get("Answer", []) or []
-                   if want is None or a.get("type") == want]
+        answers = [str(a["data"]) for a in data.get("Answer") or []
+                   if isinstance(a, dict) and "data" in a and (want is None or a.get("type") == want)]
         return status, answers
     raise OsintError(f"DNS sorgusu başarısız: {last_error}")
 

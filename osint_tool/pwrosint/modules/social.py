@@ -28,10 +28,8 @@ def _gh(ctx: Context, path: str, ok=(200,)):
         raise OsintError("GitHub token geçersiz")
     if resp.status_code not in ok:
         raise OsintError(f"api.github.com: HTTP {resp.status_code}")
-    try:
-        return resp.json()
-    except ValueError as e:
-        raise OsintError("api.github.com: geçersiz JSON") from e
+    from ..core.http import parse_json
+    return parse_json(resp, list if path.split("?")[0].endswith(("repos", "orgs", "public")) else dict)
 
 
 def commit_identities(events: list[dict]) -> Counter:
@@ -110,45 +108,96 @@ def _top_hours(hours: Counter) -> str:
 
 # ---------------------------------------------------------------- Reddit
 
+REDDIT_HOSTS = ("https://www.reddit.com", "https://old.reddit.com", "https://api.reddit.com")
+ARCTIC = "https://arctic-shift.photon-reddit.com/api"
+
+
+def _reddit_json(ctx: Context, path: str, **params):
+    """Reddit bulut IP'lerini sık sık 403 ile engeller; farklı ön yüzleri sırayla dener.
+    (veri, engellendi_mi) döndürür."""
+    headers = {"User-Agent": ctx.settings.user_agent}
+    blocked = False
+    for host in REDDIT_HOSTS:
+        try:
+            resp = ctx.http.get(host + path, headers=headers, params=params or None)
+        except OsintError:
+            continue
+        if resp.status_code == 404:
+            return None, False
+        if resp.status_code in (403, 429):
+            blocked = True
+            continue
+        if resp.status_code == 200:
+            try:
+                return resp.json(), False
+            except ValueError:
+                continue
+    return None, blocked
+
+
+def _arctic(ctx: Context, kind: str, user: str) -> list[dict]:
+    data = ctx.http.json(f"{ARCTIC}/{kind}/search", params={"author": user, "limit": 100, "sort": "desc"},
+                         timeout=max(20, ctx.settings.timeout))
+    return [x for x in (data or {}).get("data") or [] if isinstance(x, dict) and x.get("created_utc")]
+
+
 def _reddit(ctx: Context, rep: Report, v: dict) -> None:
     user = v["username"]
-    headers = {"User-Agent": ctx.settings.user_agent}
-    about = ctx.http.json(f"https://www.reddit.com/user/{quote(user)}/about.json", headers=headers,
-                          ok=(200, 404))
+    about, blocked = _reddit_json(ctx, f"/user/{quote(user)}/about.json")
     data = (about or {}).get("data")
-    if not data or data.get("is_suspended"):
-        msg = "Hesap askıya alınmış" if data else "Böyle bir Reddit kullanıcısı yok"
-        rep.section("Sonuç").add("Durum", msg, level=Level.MUTED)
-        return
-    sec = rep.section("Profil")
-    created = datetime.fromtimestamp(data.get("created_utc", 0), timezone.utc)
-    sec.add("Oluşturulma", f"{created:%Y-%m-%d}  ({(datetime.now(timezone.utc) - created).days // 365} yıl)")
-    sec.add("Karma (gönderi / yorum)", f"{data.get('link_karma', 0):,} / {data.get('comment_karma', 0):,}")
-    flags = [x for x, k in (("doğrulanmış e-posta", "has_verified_email"), ("moderatör", "is_mod"),
-                            ("Reddit çalışanı", "is_employee"), ("premium", "is_gold")) if data.get(k)]
-    if flags:
-        sec.add("Özellikler", ", ".join(flags))
-    sec.link("Profil", f"https://www.reddit.com/user/{user}")
-    rep.changed()
+    items: list[dict] = []
+    source = "Reddit"
 
-    items = []
-    for kind in ("comments", "submitted"):
-        try:
-            listing = ctx.http.json(f"https://www.reddit.com/user/{quote(user)}/{kind}.json",
-                                    params={"limit": 100}, headers=headers)
+    if data:
+        if data.get("is_suspended"):
+            rep.section("Sonuç").add("Durum", "Hesap askıya alınmış", level=Level.WARN)
+            return
+        sec = rep.section("Profil")
+        created = datetime.fromtimestamp(data.get("created_utc", 0), timezone.utc)
+        sec.add("Oluşturulma", f"{created:%Y-%m-%d}  ({(datetime.now(timezone.utc) - created).days // 365} yıl)")
+        sec.add("Karma (gönderi / yorum)", f"{data.get('link_karma', 0):,} / {data.get('comment_karma', 0):,}")
+        flags = [x for x, k in (("doğrulanmış e-posta", "has_verified_email"), ("moderatör", "is_mod"),
+                                ("Reddit çalışanı", "is_employee"), ("premium", "is_gold")) if data.get(k)]
+        if flags:
+            sec.add("Özellikler", ", ".join(flags))
+        sec.link("Profil", f"https://www.reddit.com/user/{user}")
+        rep.changed()
+        for kind in ("comments", "submitted"):
+            listing, _ = _reddit_json(ctx, f"/user/{quote(user)}/{kind}.json", limit=100)
             items += [c["data"] for c in (listing or {}).get("data", {}).get("children", [])]
+    elif not blocked:
+        rep.section("Sonuç").add("Durum", "Böyle bir Reddit kullanıcısı yok", level=Level.MUTED)
+        return
+
+    if not items:  # Reddit engelledi ya da liste boş: herkese açık arşive başvur
+        try:
+            items = _arctic(ctx, "comments", user) + _arctic(ctx, "posts", user)
+            source = "Arctic Shift arşivi"
         except OsintError as e:
-            rep.error(f"Reddit {kind}: {e}")
+            if not data:
+                raise OsintError(f"Reddit bu ağdan erişimi engelledi ve arşive ulaşılamadı ({e})") from e
+        if not data:
+            if not items:
+                rep.section("Sonuç").add(
+                    "Durum", "Reddit erişimi engelledi; arşivde bu kullanıcıya ait gönderi yok", level=Level.MUTED)
+                return
+            sec = rep.section("Profil", note="Reddit bu ağdan doğrudan erişimi engelledi; "
+                                             "veriler herkese açık Arctic Shift arşivinden alındı.")
+            oldest = min(i["created_utc"] for i in items)
+            sec.add("İlk arşivlenen etkinlik", f"{datetime.fromtimestamp(oldest, timezone.utc):%Y-%m-%d}")
+            sec.link("Profil", f"https://www.reddit.com/user/{user}")
+            rep.changed()
+
     if not items:
         return
     subs = Counter(i.get("subreddit") for i in items if i.get("subreddit"))
-    act = rep.section(f"Aktivite (son {len(items)} gönderi/yorum)")
+    act = rep.section(f"Aktivite (son {len(items)} gönderi/yorum · {source})")
     act.add("En çok yazdığı subreddit'ler", ", ".join(f"r/{s} ({n})" for s, n in subs.most_common(8)))
-    hours = Counter(datetime.fromtimestamp(i["created_utc"], timezone.utc).hour for i in items)
+    hours = Counter(datetime.fromtimestamp(int(i["created_utc"]), timezone.utc).hour for i in items)
     act.add("En aktif saatler (UTC)", _top_hours(hours))
     act.add("Tahmini saat dilimi", guess_timezone(hours))
     act.note = "Saat dilimi tahmini, uyku saatlerine denk gelen sessiz 6 saatlik pencereye dayanır."
-    first = min(i["created_utc"] for i in items)
+    first = min(int(i["created_utc"]) for i in items)
     act.add("İncelenen aralık", f"{datetime.fromtimestamp(first, timezone.utc):%Y-%m-%d} → bugün")
 
 

@@ -69,8 +69,8 @@ def _bssid(ctx: Context, rep: Report, v: dict) -> None:
         wifi.link("Manuel arama", "https://wigle.net/search")
         return
     data = ctx.http.json("https://api.wigle.net/api/v2/network/search", params={"netid": mac},
-                         auth=(name, token))
-    results = data.get("results") or []
+                         auth=(name, token)) or {}
+    results = [r for r in data.get("results") or [] if isinstance(r, dict)]
     if not results:
         wifi.add("Sonuç", "Bu BSSID WiGLE veritabanında yok", level=Level.MUTED)
     for r in results[:5]:
@@ -186,7 +186,8 @@ def _vin(ctx: Context, rep: Report, v: dict) -> None:
 
     data = ctx.http.json(f"https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/{vin}",
                          params={"format": "json"}, timeout=max(20, ctx.settings.timeout))
-    r = (data.get("Results") or [{}])[0]
+    results = (data or {}).get("Results") or [{}]
+    r = results[0] if isinstance(results[0], dict) else {}
     dec = rep.section("Çözümleme (NHTSA vPIC)")
     labels = (("Make", "Marka"), ("Manufacturer", "Üretici"), ("Model", "Model"), ("ModelYear", "Yıl"),
               ("Trim", "Donanım"), ("BodyClass", "Kasa"), ("VehicleType", "Araç tipi"),
