@@ -25,9 +25,10 @@ class Settings:
     wigle_api_name: str = ""
     wigle_api_token: str = ""
     ipinfo_token: str = ""
+    github_token: str = ""
     timeout: int = 10
     max_workers: int = 16
-    user_agent: str = "PwR-Osint/2.0 (+https://github.com/BagwelPower/PwR-Osint)"
+    user_agent: str = "PwR-Osint/2.1 (+https://github.com/BagwelPower/PwR-Osint)"
     disclaimer_accepted: bool = False
 
     @classmethod
@@ -61,6 +62,7 @@ API_KEY_FIELDS: list[tuple[str, str, str]] = [
     ("hunter_api_key", "Hunter.io", "https://hunter.io/api-keys"),
     ("haveibeenpwned_api_key", "Have I Been Pwned", "https://haveibeenpwned.com/API/Key"),
     ("ipinfo_token", "IPinfo (isteğe bağlı)", "https://ipinfo.io/account/token"),
+    ("github_token", "GitHub token (isteğe bağlı)", "https://github.com/settings/tokens"),
     ("wigle_api_name", "WiGLE API Name", "https://wigle.net/account"),
     ("wigle_api_token", "WiGLE API Token", "https://wigle.net/account"),
 ]

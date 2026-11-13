@@ -519,3 +519,101 @@ register(Tool("subdomain", "Subdomain", "4 pasif kaynak + canlılık kontrolü",
               "Ağ & Domain", [Action("enumerate", "Keşfet", (DOMAIN,), _subdomains)]))
 register(Tool("wayback", "Web Arşivi", "Wayback Machine: eski sayfa ve dosyalar", "HISTORY",
               "Ağ & Domain", [Action("scan", "Tara", (DOMAIN,), _wayback)]))
+
+
+# ---------------------------------------------------------------- reverse IP
+
+def _resolve_target(ctx: Context, target: str) -> str:
+    if validate.is_ip(target):
+        return target
+    ips = [x for x in dns.resolve(ctx, target, "A") if validate.is_ip(x)]
+    if not ips:
+        raise OsintError(f"{target} bir IP adresine çözülemedi")
+    return ips[0]
+
+
+def _reverse_ip(ctx: Context, rep: Report, v: dict) -> None:
+    ip = _resolve_target(ctx, v["target"])
+    resp = ctx.http.get("https://api.hackertarget.com/reverseiplookup/", params={"q": ip})
+    text = resp.text.strip()
+    if resp.status_code != 200 or text.lower().startswith("error") or "API count" in text:
+        raise OsintError("HackerTarget: günlük ücretsiz limit doldu, yarın tekrar deneyin")
+    domains = sorted({d.strip().lower() for d in text.splitlines() if d.strip() and " " not in d.strip()})
+    sec = rep.section(f"{ip} üzerindeki domainler ({len(domains)})")
+    if not domains:
+        sec.add("Sonuç", "Bu IP için kayıtlı domain yok", level=Level.MUTED)
+    for d in domains[:300]:
+        sec.add(d, url=f"https://{d}")
+    if len(domains) > 50:
+        rep.summary = ("Çok sayıda domain: büyük olasılıkla paylaşımlı hosting veya CDN; "
+                       "aynı sahibe ait olduklarını göstermez.")
+    rep.section("Dış araçlar").link("ViewDNS", f"https://viewdns.info/reverseip/?host={ip}&t=1")
+
+
+# ---------------------------------------------------------------- ASN / BGP
+
+def asn_or_ip(value: str) -> str:
+    v = value.strip().upper().replace(" ", "")
+    if v.startswith("AS") and v[2:].isdigit():
+        return v
+    if v.isdigit():
+        return f"AS{v}"
+    return validate.ip(value)
+
+
+def _ripe(ctx: Context, endpoint: str, resource: str) -> dict:
+    data = ctx.http.json(f"https://stat.ripe.net/data/{endpoint}/data.json", params={"resource": resource},
+                         timeout=max(20, ctx.settings.timeout))
+    return (data or {}).get("data") or {}
+
+
+def _asn(ctx: Context, rep: Report, v: dict) -> None:
+    target: str = v["target"]
+    if not target.startswith("AS"):
+        net = _ripe(ctx, "network-info", target)
+        sec = rep.section(f"IP: {target}")
+        sec.add("Duyurulan blok", net.get("prefix") or "Duyurulmuyor (BGP'de görünmüyor)",
+                level=Level.OK if net.get("prefix") else Level.WARN)
+        asns = net.get("asns") or []
+        if not asns:
+            return
+        sec.add("ASN", ", ".join(f"AS{a}" for a in asns))
+        target = f"AS{asns[0]}"
+        rep.changed()
+
+    ov = _ripe(ctx, "as-overview", target)
+    sec = rep.section(target)
+    sec.add("Sahibi", ov.get("holder") or "—", level=Level.OK)
+    sec.add("BGP'de görünüyor", "Evet" if ov.get("announced") else "Hayır",
+            level=Level.OK if ov.get("announced") else Level.WARN)
+    block = ov.get("block") or {}
+    if block.get("desc"):
+        sec.add("Kayıt bloğu", block["desc"])
+    rep.changed()
+
+    prefixes = [p["prefix"] for p in (_ripe(ctx, "announced-prefixes", target).get("prefixes") or [])]
+    v4 = [p for p in prefixes if ":" not in p]
+    v6 = [p for p in prefixes if ":" in p]
+    total = sum(ipaddress.ip_network(p).num_addresses for p in v4)
+    pre = rep.section(f"Duyurulan bloklar ({len(prefixes)})")
+    pre.add("IPv4", f"{len(v4)} blok · {total:,} adres".replace(",", "."))
+    pre.add("IPv6", f"{len(v6)} blok")
+    for p in v4[:40]:
+        pre.add(p)
+    neigh = _ripe(ctx, "asn-neighbours", target).get("neighbours") or []
+    if neigh:
+        up = [n for n in neigh if n.get("type") == "left"]
+        n = rep.section("Komşular", note="'Üst' komşular bu ağa internet erişimi sağlayan sağlayıcılardır.")
+        n.add("Üst sağlayıcılar", ", ".join(f"AS{x['asn']}" for x in sorted(up, key=lambda x: -x.get("power", 0))[:10]) or "—")
+        n.add("Toplam komşu", len(neigh))
+    links = rep.section("Dış araçlar")
+    num = target[2:]
+    links.link("bgp.he.net", f"https://bgp.he.net/{target}")
+    links.link("PeeringDB", f"https://www.peeringdb.com/asn/{num}")
+    links.link("RIPEstat", f"https://stat.ripe.net/{target}")
+
+
+register(Tool("reverseip", "Reverse IP", "Aynı sunucudaki diğer siteler", "DEVICE_HUB", "Ağ & Domain", [
+    Action("lookup", "Bul", (Field("target", "IP veya domain", "ornek.com", "url", validate.host),), _reverse_ip)]))
+register(Tool("asn", "ASN / BGP", "Ağ sahibi, IP blokları, üst sağlayıcılar", "HUB", "Ağ & Domain", [
+    Action("lookup", "Sorgula", (Field("target", "ASN veya IP", "AS9121 / 8.8.8.8", parse=asn_or_ip),), _asn)]))

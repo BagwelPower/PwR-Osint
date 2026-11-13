@@ -31,6 +31,7 @@ def suggest(raw: str) -> list[Suggestion]:
         add("email", "analyze", "email", email, "E-posta")
         add("hibp", "email", "email", email, "E-posta sızıntısı")
         add("username", "scan", "username", email.split("@")[0], "E-postadaki kullanıcı adı")
+        add("fediverse", "profile", "handle", email, "Mastodon hesabı olabilir")
         return out
     except ValueError:
         pass
@@ -38,7 +39,38 @@ def suggest(raw: str) -> list[Suggestion]:
     if validate.is_ip(text):
         add("host", "profile", "target", text, "IP adresi")
         add("shodan", "host", "ip", text, "Shodan")
+        add("blacklist", "check", "ip", text, "Spam kara listeleri")
+        add("asn", "lookup", "target", text, "Ağ sahibi (ASN)")
+        add("reverseip", "lookup", "target", text, "Aynı sunucudaki siteler")
         add("virustotal", "ip", "ip", text, "VirusTotal")
+        return out
+
+    if re.match(r"https?://", text, re.I):
+        from ..modules.web import parse_url
+        try:
+            url = parse_url(text)
+        except ValueError:
+            url = None
+        if url:
+            path = url.split("?")[0].lower()
+            if path.endswith((".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".tif", ".tiff")):
+                add("image", "analyze", "url", url, "Görsel adresi")
+            add("site", "analyze", "url", url, "Web sayfası")
+            host = url.split("/")[2]
+            if not validate.is_ip(host):
+                add("host", "profile", "target", host, "Domain")
+            return out
+
+    from ..modules.crypto import btc_address, eth_address
+    for parse, action, reason in ((btc_address, "btc", "Bitcoin adresi"), (eth_address, "eth", "Ethereum adresi")):
+        try:
+            add("crypto", action, "address", parse(text), reason)
+            return out
+        except ValueError:
+            pass
+
+    if re.fullmatch(r"(?i)AS\s?\d{1,10}", text):
+        add("asn", "lookup", "target", text.upper().replace(" ", ""), "ASN")
         return out
 
     digits = re.sub(r"[\s()+.-]", "", text)
@@ -81,7 +113,10 @@ def suggest(raw: str) -> list[Suggestion]:
             add("dns", "records", "domain", dom, "DNS kayıtları")
             add("subdomain", "enumerate", "domain", dom, "Subdomain")
             add("tls", "analyze", "domain", dom, "SSL/TLS")
+            add("site", "analyze", "url", f"https://{dom}/", "Site teknolojisi ve iletişim")
             add("wayback", "scan", "domain", dom, "Web arşivi")
+            add("phishing", "typosquat", "domain", dom, "Taklit domainler")
+            add("dorks", "generate", "domain", dom, "Google dork'ları")
             return out
     except ValueError:
         pass
@@ -90,7 +125,11 @@ def suggest(raw: str) -> list[Suggestion]:
         add("name", "search", "name", text, "Ad soyad")
         return out
     try:
-        add("username", "scan", "username", validate.username(text), "Kullanıcı adı")
+        user = validate.username(text)
     except ValueError:
-        pass
+        return out
+    add("username", "scan", "username", user, "Kullanıcı adı")
+    add("github", "profile", "username", user, "GitHub profili")
+    add("reddit", "profile", "username", user, "Reddit profili")
+    add("telegram", "profile", "username", user, "Telegram")
     return out

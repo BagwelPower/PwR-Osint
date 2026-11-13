@@ -18,14 +18,27 @@
 | | **E-posta** | MX / SPF / DMARC analizi, sağlayıcı tespiti, geçici e-posta tespiti, Gravatar · Permutator (Türkçe karakter desteği) · Hunter.io | Hunter (isteğe bağlı) |
 | | **Telefon** | `phonenumbers` ile geçerlilik, tür (mobil/sabit/VoIP), operatör tahsisi, bölge, saat dilimi, formatlar | — |
 | | **İsim / Soyisim** | Google dork'ları, platform aramaları, akademik/kamu kaynakları, kullanıcı adı adayları | — |
+| Sosyal Medya | **GitHub** | Profil, diller, en popüler repolar, organizasyonlar, **commit'lerden sızan e-postalar**, aktif saatler | GitHub token (isteğe bağlı) |
+| | **Reddit** | Hesap yaşı, karma, en çok yazdığı subreddit'ler, aktif saatlerden **saat dilimi tahmini** | — |
+| | **Telegram** | Kullanıcı / kanal / grup ayrımı, abone sayısı, açıklama, fotoğraf | — |
+| | **Mastodon** | Fediverse hesabı, biyografi, sunucunun doğruladığı linkler | — |
 | Ağ & Domain | **IP & Domain** | RDAP WHOIS (kayıt/bitiş tarihi, yeni kayıt uyarısı), konum & ASN, abuse iletişimi, **Shodan InternetDB** ile açık port ve CVE'ler | — |
 | | **DNS** | A, AAAA, CNAME, MX, NS, TXT, SOA, CAA (DNS-over-HTTPS) + SPF/DMARC/CAA değerlendirmesi | — |
 | | **SSL / TLS** | Sertifika doğrulama (bozuk sertifikada bile ayrıntı), kalan süre, SHA-256, protokol, SAN, HTTP güvenlik başlıkları | — |
 | | **Subdomain** | crt.sh, HackerTarget, AlienVault OTX, Anubis + canlılık kontrolü | — |
 | | **Web Arşivi** | Wayback Machine: ilk/son kayıt, ilginç dosyalar (.pdf, .sql, .env…), parametreli URL'ler | — |
+| | **Reverse IP** | Aynı sunucuyu paylaşan diğer domainler | — |
+| | **ASN / BGP** | Ağ sahibi, duyurulan IP blokları, üst sağlayıcılar (RIPEstat) | — |
+| Web | **Site Analizi** | 60+ teknoloji imzası (TR e-ticaret altyapıları dahil), sayfadaki e-posta/telefon/sosyal hesaplar, **Analytics / AdSense / Pixel kimlikleri** (aynı sahibin diğer sitelerine giden iz), robots.txt, sitemap, security.txt | — |
+| | **urlscan.io** | Domainin geçmiş taramaları, görülen IP'ler ve zararlı işaretleri | — |
+| | **Google Dork** | Belgeler, açık dizinler, paneller, sızıntı siteleri, bulut depolama için 12 hazır dork | — |
 | Tehdit | **Sızıntı Kontrolü** | Şifre sızıntısı (k-anonimlik: şifre cihazdan çıkmaz) · e-posta sızıntıları | HIBP (e-posta için) |
 | | **Shodan** | Host detayı, servisler, zafiyetler · arama | Shodan |
 | | **VirusTotal** | Domain, IP ve dosya hash'i itibarı, işaretleyen motorlar | VirusTotal |
+| | **Oltalama & Taklit** | Domainin ~100+ benzer varyasyonunu üretip **kayıtlı olanları** bulur (MX'i olanlar kırmızı) · OpenPhish akışında arama | — |
+| | **Kara Liste** | IP'nin 10 spam / DNSBL listesindeki durumu | — |
+| Kripto | **Kripto Adres** | Bitcoin (Legacy/SegWit/Taproot, sağlama doğrulamalı) ve Ethereum: bakiye, USD/TL karşılığı, işlem geçmişi | — |
+| Görsel & Dosya | **Görsel Analizi** | URL'den görsel: **EXIF (cihaz, çekim zamanı, seri no) ve GPS konumu**, boyut, hash'ler, Google Lens / Yandex / Bing / TinEye tersine arama | — |
 | Diğer | **Konum** | Koordinat → adres (OpenStreetMap), harita/Street View linkleri · BSSID/MAC → üretici, rastgele MAC tespiti, WiGLE konumu | WiGLE (isteğe bağlı) |
 | | **Araç** | VIN: yapı, kontrol hanesi, model yılı, NHTSA çözümleme · TR plaka: il ve format doğrulama | — |
 
@@ -43,7 +56,7 @@ Her push'ta GitHub Actions testleri çalıştırır ve APK'yı derler:
 Kurulum: APK'ya dokunun ve "bilinmeyen kaynaklardan yükleme" iznini bir kerelik verin.
 
 ### Özellikler
-- **Akıllı arama**: e-posta, IP, domain, telefon, hash, VIN, plaka, koordinat ya da kullanıcı adı yazın; uygulama türünü tanıyıp uygun aracı önerir ve çalıştırır.
+- **Akıllı arama**: e-posta, IP, domain, URL, görsel linki, telefon, hash, Bitcoin/Ethereum adresi, ASN, VIN, plaka, koordinat ya da kullanıcı adı yazın; uygulama türünü tanıyıp uygun aracı önerir ve çalıştırır.
 - Sonuçlar renkli kartlarda gösterilir (yeşil = iyi, sarı = dikkat, kırmızı = risk). Linke dokunmak onu açar, satıra uzun basmak kopyalar.
 - Rapor metin veya JSON olarak kopyalanabilir ya da paylaşılabilir. Uzun sorgular iptal edilebilir.
 - Son 30 arama saklanır (şifreler asla saklanmaz).
@@ -91,6 +104,7 @@ API anahtarları uygulamanın **Ayarlar** ekranından veya terminal menüsündek
 | Hunter.io | https://hunter.io/api-keys |
 | Have I Been Pwned | https://haveibeenpwned.com/API/Key |
 | WiGLE | https://wigle.net/account |
+| GitHub (isteğe bağlı, limiti 60 → 5000/saat yapar) | https://github.com/settings/tokens |
 | IPinfo (isteğe bağlı, limit artırır) | https://ipinfo.io/account/token |
 
 ---
@@ -113,7 +127,7 @@ osint_tool/
 │   │   ├── detect.py       # Akıllı arama
 │   │   ├── history.py      # Son aramalar
 │   │   └── config.py       # Ayarlar
-│   └── modules/            # person, network, threat, misc
+│   └── modules/            # person, social, network, web, threat, crypto, media, misc
 └── tests/                  # birim testleri (sahte HTTP) + tests/live (gerçek servisler)
 ```
 

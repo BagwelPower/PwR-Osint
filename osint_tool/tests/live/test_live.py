@@ -87,3 +87,80 @@ def test_wayback():
 def test_pwned_password():
     r = run("hibp", "password", password="password")
     assert section(r, "Sonuç")["Durum"].level == Level.BAD
+
+
+# ---------------------------------------------------------------- 2.1 araçları
+
+def test_github_profile():
+    r = run("github", username="torvalds")
+    assert section(r, "Profil")["Ad"].value == "Linus Torvalds"
+    assert "C" in section(r, "Repolar")["Diller"].value
+
+
+def test_reddit_profile():
+    r = run("reddit", username="spez")
+    assert section(r, "Profil")["Oluşturulma"].value.startswith("2005")
+
+
+def test_telegram_channel():
+    r = run("telegram", username="durov")
+    assert section(r, "Profil")["Tür"].value == "Kanal"
+
+
+def test_site_analysis():
+    from pwrosint.modules.web import parse_url
+    r = run("site", url=parse_url("wordpress.org"))
+    assert "WordPress" in section(r, "Teknolojiler")
+
+
+def test_site_files():
+    r = run("site", "files", domain="github.com")
+    assert section(r, "robots.txt")["Durum"].level == Level.OK
+
+
+def test_asn():
+    r = run("asn", target="AS15169")
+    assert "Google" in section(r, "AS15169")["Sahibi"].value
+
+
+def test_asn_from_ip():
+    r = run("asn", target="8.8.8.8")
+    assert "AS15169" in section(r, "IP:")["ASN"].value
+
+
+def test_blacklist_clean_ip():
+    r = run("blacklist", ip="8.8.8.8")
+    assert section(r, "Kara liste")  # en az bir liste yanıt vermeli
+    assert not r.errors
+
+
+def test_btc_genesis():
+    r = run("crypto", "btc", address="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa")
+    assert section(r, "Adres")["İşlem sayısı"].value != "0"
+
+
+def test_eth():
+    r = run("crypto", "eth", address="0xde0b295669a9fd93d5f28d9ec85e40f4cb697bae")
+    assert int(section(r, "Adres")["İşlem sayısı"].value) > 0
+
+
+def test_typosquat():
+    r = run("phishing", "typosquat", domain="google.com")
+    assert len(section(r, "Kayıtlı")) > 5
+
+
+def test_openphish_feed():
+    r = run("phishing", "openphish", domain="ornek-olmayan-domain-12345.com")
+    assert section(r, "OpenPhish")["Durum"].level == Level.OK
+
+
+def test_urlscan():
+    r = run("urlscan", domain="github.com")
+    assert not r.errors and "tarama" in r.summary
+
+
+def test_image_exif_gps():
+    from pwrosint.modules.web import parse_url
+    r = run("image", url=parse_url("https://raw.githubusercontent.com/ianare/exif-samples/master/jpg/gps/DSCN0010.jpg"))
+    assert section(r, "EXIF")["Üretici"].value.startswith("NIKON")
+    assert "GPS konumu" in [s.title for s in r.sections]

@@ -137,7 +137,7 @@ class App:
 
         def on_search(e):
             items = suggest(e.control.value or "")
-            suggestions.controls = [self.suggestion_tile(s) for s in items[:6]]
+            suggestions.controls = [self.suggestion_tile(s) for s in items[:8]]
             suggestions.visible = bool(items)
             self.page.update()
 

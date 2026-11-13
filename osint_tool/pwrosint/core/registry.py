@@ -47,7 +47,8 @@ class Tool:
         raise KeyError(action_id)
 
 
-CATEGORIES = ["Kişi", "Ağ & Domain", "Tehdit İstihbaratı", "Diğer"]
+CATEGORIES = ["Kişi", "Sosyal Medya", "Ağ & Domain", "Web", "Tehdit İstihbaratı", "Kripto",
+              "Görsel & Dosya", "Diğer"]
 
 _TOOLS: dict[str, Tool] = {}
 

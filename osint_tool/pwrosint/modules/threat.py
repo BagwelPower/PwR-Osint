@@ -206,3 +206,181 @@ register(Tool("virustotal", "VirusTotal", "Domain, IP ve dosya itibarı", "SHIEL
     Action("ip", "IP", (IP,), _vt_ip, needs_key="virustotal_api_key"),
     Action("file", "Dosya hash", (Field("hash", "MD5 / SHA-1 / SHA-256", "44d88612fea8a8f36de82e1278abb02f",
                                         parse=file_hash),), _vt_file, needs_key="virustotal_api_key")]))
+
+
+# ---------------------------------------------------------------- taklit domainler
+
+from ..core import dns  # noqa: E402
+
+TWO_LEVEL = {"com.tr", "net.tr", "org.tr", "gov.tr", "edu.tr", "gen.tr", "biz.tr", "info.tr", "web.tr",
+             "co.uk", "org.uk", "com.au", "co.jp", "com.br", "co.in", "com.de", "co.nz", "com.cn"}
+ALT_TLDS = ["com", "net", "org", "com.tr", "net.tr", "info", "co", "io", "xyz", "online", "site", "shop",
+            "app", "live", "top", "biz", "me", "tr", "store", "click", "support"]
+KEYBOARD = {
+    "q": "wa", "w": "qes", "e": "wrd", "r": "etf", "t": "ryg", "y": "tuh", "u": "yij", "i": "uok",
+    "o": "ipl", "p": "o", "a": "qsz", "s": "awdz", "d": "sefx", "f": "drgc", "g": "fthv", "h": "gyjb",
+    "j": "hukn", "k": "jilm", "l": "kop", "z": "asx", "x": "zsdc", "c": "xdfv", "v": "cfgb", "b": "vghn",
+    "n": "bhjm", "m": "njk",
+}
+HOMOGLYPHS = {"o": ["0"], "0": ["o"], "l": ["1", "i"], "i": ["1", "l"], "1": ["l"], "e": ["3"],
+              "a": ["4"], "s": ["5"], "m": ["rn"], "w": ["vv"], "d": ["cl"], "g": ["q"], "b": ["d"]}
+AFFIXES = ["giris", "login", "destek", "guvenlik", "secure", "online", "hesap", "tr", "app", "my"]
+
+
+def split_domain(domain: str) -> tuple[str, str]:
+    parts = domain.split(".")
+    if len(parts) >= 3 and ".".join(parts[-2:]) in TWO_LEVEL:
+        return parts[-3], ".".join(parts[-2:])
+    return parts[-2], parts[-1]
+
+
+def typosquats(domain: str, limit: int = 400) -> dict[str, str]:
+    """{aday domain: üretim yöntemi}"""
+    name, tld = split_domain(domain)
+    out: dict[str, str] = {}
+
+    def add(label: str, kind: str, suffix: str = tld) -> None:
+        label = label.strip("-")
+        if label and (label != name or suffix != tld) and len(label) <= 63 and "--" not in label:
+            cand = f"{label}.{suffix}"
+            if cand != domain and cand not in out:
+                out[cand] = kind
+
+    for i in range(len(name)):
+        add(name[:i] + name[i + 1:], "harf eksiltme")
+        add(name[:i] + name[i] + name[i:], "harf tekrarı")
+        if i < len(name) - 1:
+            add(name[:i] + name[i + 1] + name[i] + name[i + 2:], "yer değiştirme")
+        for ch in KEYBOARD.get(name[i], ""):
+            add(name[:i] + ch + name[i + 1:], "komşu tuş")
+        for g in HOMOGLYPHS.get(name[i], []):
+            add(name[:i] + g + name[i + 1:], "benzer karakter")
+        if 0 < i < len(name):
+            add(name[:i] + "-" + name[i:], "tire ekleme")
+    for a, b in (("rn", "m"), ("vv", "w"), ("cl", "d")):
+        if a in name:
+            add(name.replace(a, b), "benzer karakter")
+    for t in ALT_TLDS:
+        if t != tld:
+            add(name, "farklı uzantı", t)
+    for affix in AFFIXES:
+        add(f"{name}-{affix}", "oltalama eki")
+        add(f"{affix}-{name}", "oltalama eki")
+        add(f"{name}{affix}", "oltalama eki")
+    return dict(list(out.items())[:limit])
+
+
+def _typosquat(ctx: Context, rep: Report, v: dict) -> None:
+    domain: str = v["domain"]
+    cands = typosquats(domain)
+
+    def check(item):
+        cand, kind = item
+        try:
+            status, a = dns.query(ctx, cand, "A")
+            if status == "NXDOMAIN":
+                return cand, kind, None, []
+            mx = dns.resolve(ctx, cand, "MX") if a else []
+            ns = [] if a else dns.resolve(ctx, cand, "NS")
+            return cand, kind, (a or ns or ["kayıtlı"]), mx
+        except OsintError:
+            return cand, kind, None, []
+
+    results = ctx.parallel(check, cands.items())
+    live = [(c, k, a, mx) for c, k, a, mx in results if a]
+    sec = rep.section(f"Kayıtlı benzer domainler ({len(live)})",
+                      note="Kırmızı: e-posta alabiliyor (MX) — oltalama e-postası için kullanılabilir.")
+    for cand, kind, addrs, mx in sorted(live, key=lambda x: (not x[3], x[0])):
+        ip = next((x for x in addrs if validate.is_ip(x)), "")
+        sec.add(cand, f"{kind}{' · ' + ip if ip else ''}{' · MX var' if mx else ''}",
+                url=f"https://{cand}", level=Level.BAD if mx else Level.WARN)
+    rep.summary = f"{len(cands)} varyasyon denendi, {len(live)} tanesi kayıtlı."
+    rep.section("Dış araçlar").link("dnstwist.it", f"https://dnstwist.it/")
+
+
+# ---------------------------------------------------------------- DNS kara listeleri
+
+DNSBLS = {
+    "zen.spamhaus.org": "Spamhaus ZEN",
+    "bl.spamcop.net": "SpamCop",
+    "b.barracudacentral.org": "Barracuda",
+    "dnsbl.sorbs.net": "SORBS",
+    "psbl.surriel.com": "PSBL",
+    "dnsbl-1.uceprotect.net": "UCEPROTECT L1",
+    "dnsbl.dronebl.org": "DroneBL",
+    "all.s5h.net": "s5h",
+    "bl.mailspike.net": "Mailspike",
+    "spam.dnsbl.anonmails.de": "Anonmails",
+}
+
+
+def dnsbl_name(ip: str, zone: str) -> str:
+    return ".".join(reversed(ip.split("."))) + "." + zone
+
+
+def _blacklist(ctx: Context, rep: Report, v: dict) -> None:
+    ip: str = v["ip"]
+    if ":" in ip:
+        raise OsintError("DNS kara listeleri şimdilik yalnızca IPv4 destekliyor")
+
+    def check(zone):
+        try:
+            status, answers = dns.query(ctx, dnsbl_name(ip, zone), "A")
+        except OsintError as e:
+            return zone, "error", str(e)
+        codes = [a for a in answers if a.startswith("127.")]
+        if not codes:
+            return zone, "clean", ""
+        if any(c.startswith("127.255.255.") or c == "127.0.0.1" for c in codes):
+            return zone, "blocked", "liste genel DNS sunucularından sorguyu reddetti"
+        return zone, "listed", ", ".join(codes)
+
+    results = ctx.parallel(check, DNSBLS)
+    listed = [r for r in results if r[1] == "listed"]
+    sec = rep.section("Kara liste kontrolü")
+    for zone, state, detail in sorted(results, key=lambda r: ["listed", "clean", "blocked", "error"].index(r[1])):
+        name = DNSBLS[zone]
+        if state == "listed":
+            sec.add(name, f"LİSTEDE ({detail})", level=Level.BAD)
+        elif state == "clean":
+            sec.add(name, "Temiz", level=Level.OK)
+        else:
+            sec.add(name, detail, level=Level.MUTED)
+    rep.summary = (f"{len(listed)} kara listede bulundu — bu IP'den gelen e-postalar engellenebilir."
+                   if listed else "Kontrol edilen listelerin hiçbirinde yok.")
+    links = rep.section("Dış araçlar")
+    links.link("MXToolbox", f"https://mxtoolbox.com/SuperTool.aspx?action=blacklist%3a{ip}")
+    links.link("AbuseIPDB", f"https://www.abuseipdb.com/check/{ip}")
+    links.link("Spamhaus", f"https://check.spamhaus.org/results/?query={ip}")
+
+
+# ---------------------------------------------------------------- OpenPhish
+
+def _openphish(ctx: Context, rep: Report, v: dict) -> None:
+    domain: str = v["domain"]
+    resp = ctx.http.get("https://openphish.com/feed.txt", timeout=max(30, ctx.settings.timeout))
+    if resp.status_code != 200:
+        raise OsintError(f"OpenPhish: HTTP {resp.status_code}")
+    from urllib.parse import urlsplit
+    hits = [u for u in resp.text.split()
+            if (h := (urlsplit(u).hostname or "").lower()) == domain or h.endswith("." + domain)]
+    sec = rep.section("OpenPhish (son 7 gün)")
+    if hits:
+        for u in hits[:50]:
+            sec.add(u, level=Level.BAD)
+        rep.summary = f"{len(hits)} aktif oltalama adresi bu domain altında!"
+    else:
+        sec.add("Durum", "Güncel oltalama listesinde yok", level=Level.OK)
+    sec.note = "Ücretsiz akış, OpenPhish'in son tespitlerinin bir bölümünü içerir."
+    links = rep.section("Dış araçlar")
+    links.link("Google Safe Browsing", f"https://transparencyreport.google.com/safe-browsing/search?url={domain}")
+    links.link("PhishTank", "https://phishtank.org/")
+    links.link("URLhaus", f"https://urlhaus.abuse.ch/browse.php?search={domain}")
+
+
+register(Tool("phishing", "Oltalama & Taklit", "Benzer kayıtlı domainler, OpenPhish", "PHISHING",
+              "Tehdit İstihbaratı", [
+                  Action("typosquat", "Taklit domainler", (DOMAIN,), _typosquat),
+                  Action("openphish", "OpenPhish", (DOMAIN,), _openphish)]))
+register(Tool("blacklist", "Kara Liste", "IP'nin 10 spam/DNSBL listesindeki durumu", "BLOCK",
+              "Tehdit İstihbaratı", [Action("check", "Kontrol", (IP,), _blacklist)]))

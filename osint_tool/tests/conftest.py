@@ -28,7 +28,9 @@ class FakeHttp(Http):
     def get(self, url, **kw):
         self.calls.append((url, kw))
         params = kw.get("params") or {}
-        for prefix, (status, body, want) in reversed(self.routes):
+        # En uzun (en özel) önek kazanır; eşitlikte parametre koşulu olan ve sonra eklenen önce gelir.
+        ranked = sorted(enumerate(self.routes), key=lambda r: (len(r[1][0]), bool(r[1][1][2]), r[0]), reverse=True)
+        for _, (prefix, (status, body, want)) in ranked:
             if url.startswith(prefix) and all(str(params.get(k)) == str(v) for k, v in (want or {}).items()):
                 if isinstance(body, Exception):
                     raise body
@@ -37,8 +39,12 @@ class FakeHttp(Http):
                 resp.url = url
                 if isinstance(body, (dict, list)):
                     resp._content = json.dumps(body).encode()
+                elif isinstance(body, bytes):
+                    resp._content = body
                 else:
                     resp._content = (body or "").encode()
+                resp._content_consumed = True  # stream=True + iter_content da çalışsın
+                resp.encoding = "utf-8"
                 return resp
         raise OsintError(f"FakeHttp: beklenmeyen istek {url} {params}")
 
