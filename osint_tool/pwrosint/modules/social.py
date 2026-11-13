@@ -229,7 +229,9 @@ def _telegram(ctx: Context, rep: Report, v: dict) -> None:
     resp = ctx.http.get(f"https://t.me/{quote(name)}")
     html = resp.text
     title = _meta(html, "og:title")
-    if resp.status_code != 200 or "tgme_page_title" not in html:
+    if resp.status_code not in (200, 404):
+        raise OsintError(f"t.me: HTTP {resp.status_code} (erişim engellendi veya limit)")
+    if resp.status_code == 404 or "tgme_page_title" not in html:
         rep.section("Sonuç").add("Durum", "Böyle bir Telegram kullanıcısı / kanalı yok", level=Level.MUTED)
         return
     extra = re.search(r'<div class="tgme_page_extra">([^<]+)</div>', html)

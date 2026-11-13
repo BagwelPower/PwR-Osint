@@ -55,6 +55,18 @@ def render(report: Report) -> None:
     console.rule(head, align="left", style="cyan")
     if report.summary:
         console.print(f"[bold]{report.summary}[/]")
+    for note in report.notices:
+        console.print(f"[cyan]ℹ {note}[/]")
+    if report.missing_key:
+        console.print(f"[yellow]! {report.missing_key[0]} API anahtarı gerekli — ana menüden 'A' ile ekleyin "
+                      f"({report.missing_key[1]})[/]")
+    hl = report.highlights()
+    if hl:
+        lines = [Text.assemble((ICON[i.level] + " ", STYLE[i.level]), (i.label, "bold"),
+                               (f": {i.value}" if i.value else "", STYLE[i.level]), (f"  [{t}]", "grey50"))
+                 for t, i in hl]
+        console.print(Panel(Group(*lines), title="[bold red]Önemli bulgular[/]", title_align="left",
+                            border_style="red", box=box.ROUNDED, padding=(0, 1)))
     for sec in report.sections:
         table = Table(box=None, show_header=False, padding=(0, 1), expand=False)
         table.add_column(width=1)
@@ -76,6 +88,10 @@ def render(report: Report) -> None:
             body.append(Text(sec.note, style="italic grey50"))
         console.print(Panel(Group(*body), title=f"[bold]{sec.title}[/]", title_align="left",
                             border_style="grey30", box=box.ROUNDED, padding=(0, 1)))
+    if report.sources:
+        ok = sum(1 for _, good, _ in report.sources if good)
+        parts = [f"[green]✔ {n}[/]" if good else f"[grey50]· {n} ({d})[/]" for n, good, d in report.sources]
+        console.print(f"[grey50]Kaynaklar {ok}/{len(report.sources)}:[/] " + "  ".join(parts))
     for err in report.errors:
         console.print(f"[bold red]✖ {err}[/]")
     if report.elapsed is not None:
@@ -160,6 +176,10 @@ def interactive() -> None:
 def tool_menu(tool: Tool, settings) -> None:
     ctx = Context(settings)
     action = tool.actions[0]
+    console.print(Panel(Text(tool.description, style="white") + Text(
+        ("\nKaynaklar: " + ", ".join(tool.sources)) if tool.sources else "", style="grey50") + Text(
+        ("\nSınır: " + tool.limits) if tool.limits else "", style="yellow"),
+        title=f"[bold cyan]{tool.title}[/]", border_style="grey30"))
     if len(tool.actions) > 1:
         for i, a in enumerate(tool.actions, 1):
             console.print(f"  [bold cyan]{i}[/] {a.title}")

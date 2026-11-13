@@ -125,3 +125,17 @@ def test_runner_hides_passwords_from_target(ctx, http):
 def test_require_raises(ctx):
     with pytest.raises(MissingApiKey):
         ctx.require("shodan_api_key", "Shodan")
+
+
+def test_every_tool_is_documented():
+    from pwrosint.core.registry import CATEGORY_INFO
+    for t in all_tools():
+        assert len(t.description) > 60, t.id
+        assert t.category in CATEGORY_INFO, t.id
+
+
+def test_report_target_is_human_readable(ctx):
+    from pwrosint.modules.misc import parse_plate
+    tool = get_tool("vehicle")
+    report = run_action(ctx, tool, tool.action("plate"), {"plate": parse_plate("34abc123")})
+    assert report.target == "34 ABC 123"

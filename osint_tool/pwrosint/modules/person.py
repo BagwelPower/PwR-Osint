@@ -300,19 +300,29 @@ def _email(ctx: Context, rep: Report, v: dict) -> None:
 
     md5 = hashlib.md5(addr.lower().encode()).hexdigest()
     sha256 = hashlib.sha256(addr.lower().encode()).hexdigest()
-    grav = rep.section("Gravatar")
+    _gravatar(ctx, rep, sha256, md5)
+    rep.changed()
+
+    # Sızıntı özeti (anahtarsız XposedOrNot)
+    leak = rep.section("Sızıntı özeti")
     try:
-        has = ctx.http.get(f"https://www.gravatar.com/avatar/{sha256}?d=404&s=200").status_code == 200
-    except OsintError:
-        has = None
-    if has:
-        grav.add("Profil fotoğrafı", f"https://www.gravatar.com/avatar/{sha256}?s=400",
-                 url=f"https://www.gravatar.com/avatar/{sha256}?s=400", level=Level.OK)
-        grav.link("Profil", f"https://gravatar.com/{sha256}")
-    else:
-        grav.add("Profil fotoğrafı", "Yok" if has is False else "Kontrol edilemedi", level=Level.MUTED)
-    grav.add("MD5", md5)
-    grav.add("SHA-256", sha256)
+        data = ctx.http.json(f"https://api.xposedornot.com/v1/check-email/{quote(addr)}", ok=(200, 404))
+        names = sorted({str(x) for row in (data or {}).get("breaches") or [] for x in
+                        (row if isinstance(row, list) else [row])})
+        rep.source("XposedOrNot", True)
+        if names:
+            leak.add("Bulunduğu sızıntılar", f"{len(names)}: " + ", ".join(names[:25]), level=Level.BAD)
+            leak.note = "Ayrıntılar (sızan veri türleri, tarihler) için Sızıntı Kontrolü aracını kullanın."
+        else:
+            leak.add("Durum", "Bilinen sızıntılarda yok", level=Level.OK)
+    except OsintError as e:
+        rep.source("XposedOrNot", False, str(e).split(": ", 1)[-1])
+        leak.add("Durum", "Sızıntı veritabanına ulaşılamadı", level=Level.MUTED)
+    rep.changed()
+
+    if domain not in FREE_PROVIDERS and domain not in DISPOSABLE:
+        from .network import _rdap_domain
+        _rdap_domain(ctx, rep, domain)
 
     links = rep.section("Araştırma linkleri")
     q = quote_plus(f'"{addr}"')
@@ -320,7 +330,40 @@ def _email(ctx: Context, rep: Report, v: dict) -> None:
     links.link("Have I Been Pwned", f"https://haveibeenpwned.com/account/{quote(addr)}")
     links.link("Epieos", "https://epieos.com/")
     links.link("Aynı kullanıcı adı (GitHub)", f"https://github.com/{quote(local)}")
-    rep.summary = "Sızıntı kontrolü için 'Have I Been Pwned' aracını kullanın."
+
+
+def _gravatar(ctx: Context, rep: Report, sha256: str, md5: str) -> None:
+    grav = rep.section("Gravatar profili")
+    reached = True
+    try:
+        prof = ctx.http.json(f"https://api.gravatar.com/v3/profiles/{sha256}", ok=(200, 404))
+        rep.source("Gravatar", True)
+    except OsintError as e:
+        rep.source("Gravatar", False, str(e).split(": ", 1)[-1])
+        prof, reached = None, False
+    if prof and (prof.get("display_name") or prof.get("profile_url")):
+        for label, key in (("Görünen ad", "display_name"), ("Konum", "location"), ("Meslek", "job_title"),
+                           ("Şirket", "company"), ("Hakkında", "description"), ("Zamirler", "pronouns")):
+            if prof.get(key):
+                grav.add(label, prof[key], level=Level.OK if key == "display_name" else Level.INFO)
+        if prof.get("profile_url"):
+            grav.add("Profil", prof["profile_url"], url=prof["profile_url"])
+        if prof.get("avatar_url"):
+            grav.add("Fotoğraf", prof["avatar_url"], url=prof["avatar_url"] + "?s=400")
+        accounts = [a for a in prof.get("verified_accounts") or [] if isinstance(a, dict)]
+        if accounts:
+            acc = rep.section(f"Gravatar'da doğrulanmış hesaplar ({len(accounts)})")
+            for a in accounts:
+                acc.add(a.get("service_label") or a.get("service_type", "?"), a.get("url", ""), url=a.get("url"),
+                        level=Level.WARN)
+        for link in [x for x in prof.get("links") or [] if isinstance(x, dict)][:10]:
+            grav.add(link.get("label") or "Link", link.get("url", ""), url=link.get("url"))
+    elif reached:
+        grav.add("Profil", "Bu adrese bağlı Gravatar profili yok", level=Level.MUTED)
+    else:
+        grav.add("Profil", "Gravatar'a ulaşılamadı; profil kontrol edilemedi", level=Level.MUTED)
+    grav.add("MD5", md5)
+    grav.add("SHA-256", sha256)
 
 
 def _mail_checks(ctx: Context, mail, domain: str) -> None:
@@ -402,6 +445,8 @@ def site_emails(ctx: Context, rep: Report, domain: str) -> None:
             found.setdefault(e, path)
         phones.update(ex["phones"])
     rep.source(f"{domain} sayfaları", pages > 0, f"{pages} sayfa tarandı")
+    if not pages:
+        raise OsintError(f"{domain} sitesine ulaşılamadı; sayfalar taranamadı")
     own = {e: p for e, p in found.items() if e.endswith("@" + domain) or e.endswith("." + domain)}
     other = {e: p for e, p in found.items() if e not in own}
     sec = rep.section(f"Sitede yayınlanan adresler ({len(own)})")
@@ -495,8 +540,97 @@ def _phone(ctx: Context, rep: Report, v: dict) -> None:
 
 # ---------------------------------------------------------------- isim
 
+def _name_github(ctx: Context, rep: Report, name: str) -> None:
+    from .social import _gh
+    res = _gh(ctx, f"search/users?q={quote(f'fullname:{chr(34)}{name}{chr(34)}')}&per_page=8") or {}
+    users = [u for u in res.get("items") or [] if isinstance(u, dict)]
+    rep.source("GitHub", True, f"{res.get('total_count', len(users))} eşleşme")
+    if not users:
+        return
+    sec = rep.section(f"GitHub kullanıcıları ({res.get('total_count', len(users))})")
+    details = ctx.parallel(lambda u: _safe_gh_user(ctx, u["login"]), users[:6])
+    for u, d in zip(users, details):
+        extra = " · ".join(x for x in ((d or {}).get("name"), (d or {}).get("location"), (d or {}).get("company")) if x)
+        sec.add(u["login"], extra, url=u.get("html_url"), level=Level.OK)
+
+
+def _safe_gh_user(ctx: Context, login: str):
+    from .social import _gh
+    try:
+        return _gh(ctx, f"users/{quote(login)}")
+    except OsintError:
+        return None
+
+
+def _name_openalex(ctx: Context, rep: Report, name: str) -> None:
+    data = ctx.http.json("https://api.openalex.org/authors", params={"search": name, "per_page": 10},
+                         timeout=max(20, ctx.settings.timeout))
+    results = [r for r in (data or {}).get("results") or [] if isinstance(r, dict)]
+    rep.source("OpenAlex", True, f"{len(results)} yazar")
+    if not results:
+        return
+    sec = rep.section("Akademik yazarlar (OpenAlex)")
+    for r in results:
+        inst = ", ".join(i.get("display_name", "") for i in (r.get("last_known_institutions") or [])
+                         if isinstance(i, dict))[:120]
+        topics = ", ".join(t.get("display_name", "") for t in (r.get("topics") or [])[:2] if isinstance(t, dict))
+        info = " · ".join(x for x in (inst, f"{r.get('works_count', 0)} yayın, {r.get('cited_by_count', 0)} atıf",
+                                      topics) if x)
+        url = r.get("orcid") or str(r.get("id", "")).replace("https://openalex.org/", "https://openalex.org/authors/")
+        sec.add(r.get("display_name", "?"), info, url=url)
+
+
+def _name_orcid(ctx: Context, rep: Report, name: str) -> None:
+    parts = name.split()
+    if len(parts) < 2:
+        return
+    given, family = " ".join(parts[:-1]), parts[-1]
+    q = f"given-names:({given}) AND family-name:({family})"
+    data = ctx.http.json("https://pub.orcid.org/v3.0/expanded-search/", params={"q": q, "rows": 10},
+                         headers={"Accept": "application/json"}, timeout=max(20, ctx.settings.timeout))
+    rows = [r for r in (data or {}).get("expanded-result") or [] if isinstance(r, dict)]
+    rep.source("ORCID", True, f"{(data or {}).get('num-found', len(rows))} kayıt")
+    if not rows:
+        return
+    sec = rep.section(f"ORCID kayıtları ({(data or {}).get('num-found', len(rows))})")
+    for r in rows:
+        full = f"{r.get('given-names', '')} {r.get('family-names', '')}".strip()
+        inst = ", ".join(str(x) for x in (r.get("institution-name") or [])[:3])
+        sec.add(full or r.get("orcid-id", "?"), inst, url=f"https://orcid.org/{r.get('orcid-id')}")
+
+
+def _name_wikidata(ctx: Context, rep: Report, name: str) -> None:
+    data = ctx.http.json("https://www.wikidata.org/w/api.php", params={
+        "action": "wbsearchentities", "search": name, "language": "tr", "uselang": "tr", "format": "json",
+        "type": "item", "limit": 8}, headers={"User-Agent": ctx.settings.user_agent})
+    hits = [h for h in (data or {}).get("search") or [] if isinstance(h, dict)]
+    rep.source("Wikidata", True, f"{len(hits)} kayıt")
+    if not hits:
+        return
+    sec = rep.section("Tanınmış kişiler / kayıtlar (Wikidata)")
+    for h in hits:
+        sec.add(h.get("label", "?"), h.get("description", ""), url=h.get("concepturi"))
+
+
 def _name(ctx: Context, rep: Report, v: dict) -> None:
     name: str = v["name"]
+
+    def safe(fn):
+        try:
+            fn(ctx, rep, name)
+        except OsintError as e:
+            rep.source(fn.__name__.replace("_name_", "").title(), False, str(e).split(": ", 1)[-1])
+
+    ctx.parallel(safe, (_name_github, _name_openalex, _name_orcid, _name_wikidata))
+    if not any(ok for _, ok, _ in rep.sources):
+        rep.notice("Çevrimiçi kaynaklara ulaşılamadı; yalnızca arama linkleri gösteriliyor.")
+    elif not rep.sections:
+        rep.section("Sonuç").add("Kayıtlı kaynaklarda eşleşme yok", level=Level.MUTED)
+    rep.changed()
+    _name_links(rep, name)
+
+
+def _name_links(rep: Report, name: str) -> None:
     q = quote_plus(f'"{name}"')
     parts = name.split()
     first, last = parts[0], parts[-1] if len(parts) > 1 else ""

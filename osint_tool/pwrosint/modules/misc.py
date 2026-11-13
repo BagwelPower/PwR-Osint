@@ -56,10 +56,16 @@ def _bssid(ctx: Context, rep: Report, v: dict) -> None:
 
     try:
         resp = ctx.http.get(f"https://api.macvendors.com/{mac[:8]}")
-        vendor = resp.text.strip() if resp.status_code == 200 else None
-    except OsintError:
-        vendor = None
-    sec.add("Üretici", vendor or "Bulunamadı", level=Level.OK if vendor else Level.MUTED)
+        if resp.status_code == 200:
+            sec.add("Üretici", resp.text.strip(), level=Level.OK)
+        elif resp.status_code == 404:
+            sec.add("Üretici", "Kayıtlı üretici yok (OUI veritabanında değil)", level=Level.MUTED)
+        else:
+            sec.add("Üretici", f"Sorgulanamadı (HTTP {resp.status_code})", level=Level.MUTED)
+        rep.source("macvendors", resp.status_code in (200, 404))
+    except OsintError as e:
+        rep.source("macvendors", False, str(e).split(": ", 1)[-1])
+        sec.add("Üretici", "Üretici veritabanına ulaşılamadı", level=Level.MUTED)
     rep.changed()
 
     wifi = rep.section("Wi-Fi konumu (WiGLE)")

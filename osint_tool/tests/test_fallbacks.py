@@ -115,3 +115,53 @@ def test_reverse_ip_falls_back_to_urlscan(ctx, http):
     assert not report.errors
     assert set(items(report, "1.2.3.4")) == {"a.com", "b.com"}
     assert ("HackerTarget", False) in [(n, ok) for n, ok, _ in report.sources]
+
+
+def test_name_returns_real_records(ctx, http):
+    http.add("https://api.github.com/search/users", {"total_count": 1, "items": [
+        {"login": "ayilmaz", "html_url": "https://github.com/ayilmaz"}]})
+    http.add("https://api.github.com/users/ayilmaz", {"name": "Ahmet Yılmaz", "location": "İstanbul"})
+    http.add("https://api.openalex.org/authors", {"results": [
+        {"display_name": "Ahmet Yılmaz", "works_count": 42, "cited_by_count": 300, "orcid": "https://orcid.org/0000-1",
+         "last_known_institutions": [{"display_name": "İTÜ"}], "topics": [{"display_name": "Makine öğrenmesi"}]}]})
+    http.add("https://pub.orcid.org/", {"num-found": 1, "expanded-result": [
+        {"orcid-id": "0000-0002", "given-names": "Ahmet", "family-names": "Yılmaz", "institution-name": ["ODTÜ"]}]})
+    http.add("https://www.wikidata.org/", {"search": [{"label": "Ahmet Yılmaz", "description": "Türk futbolcu",
+                                                      "concepturi": "http://www.wikidata.org/entity/Q1"}]})
+    report = run(ctx, "name", name="Ahmet Yılmaz")
+    assert not report.errors
+    assert items(report, "GitHub")["ayilmaz"].value == "Ahmet Yılmaz · İstanbul"
+    assert "42 yayın, 300 atıf" in items(report, "Akademik")["Ahmet Yılmaz"].value
+    assert items(report, "ORCID")["Ahmet Yılmaz"].value == "ODTÜ"
+    assert items(report, "Tanınmış")["Ahmet Yılmaz"].value == "Türk futbolcu"
+    assert "Genel" in items(report, "Google dork")
+
+
+def test_name_offline_still_gives_links(ctx, http):
+    from pwrosint.core.errors import OsintError
+    http.add("https://", OsintError("ağ yok"))
+    report = run(ctx, "name", name="Ahmet Yılmaz")
+    assert not report.errors and "Genel" in items(report, "Google dork")
+    assert any("ulaşılamadı" in n for n in report.notices)
+
+
+def test_email_gravatar_and_leaks(ctx, http):
+    http.add("https://cloudflare-dns.com/dns-query", {"Status": 0})
+    http.add("https://api.gravatar.com/v3/profiles/", {
+        "display_name": "Ali Veli", "location": "Ankara", "profile_url": "https://gravatar.com/aliveli",
+        "verified_accounts": [{"service_label": "GitHub", "url": "https://github.com/aliveli"}]})
+    http.add("https://api.xposedornot.com/v1/check-email/", {"breaches": [["Adobe", "Canva"]]})
+    http.add("https://rdap.org/domain/ornek.com", {"events": []})
+    report = run(ctx, "email", email="ali@ornek.com")
+    assert items(report, "Gravatar profili")["Görünen ad"].value == "Ali Veli"
+    assert items(report, "Gravatar'da doğrulanmış")["GitHub"].url == "https://github.com/aliveli"
+    assert items(report, "Sızıntı özeti")["Bulunduğu sızıntılar"].value.startswith("2: Adobe, Canva")
+    assert any(s.title.startswith("WHOIS") for s in report.sections)  # kurumsal domain → domain yaşı
+
+
+def test_unreachable_is_not_reported_as_absent(ctx, http):
+    from pwrosint.core.errors import OsintError
+    http.add("https://", OsintError("ağ yok"))
+    report = run(ctx, "email", email="ali@gmail.com")
+    assert "ulaşılamadı" in items(report, "Gravatar profili")["Profil"].value
+    assert "ulaşılamadı" in items(report, "Sızıntı özeti")["Durum"].value

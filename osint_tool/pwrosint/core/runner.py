@@ -37,6 +37,8 @@ def run_action(ctx: Context, tool: Tool, action: Action, values: dict[str, Any],
 
 
 def _fmt(v: Any) -> str:
+    if isinstance(v, dict):  # ayrıştırılmış girdi (ör. plaka): kullanıcıya görünen biçimi
+        return str(v.get("plate") or v.get("display") or next(iter(v.values()), ""))
     if isinstance(v, tuple):
         return ", ".join(str(x) for x in v)
     return str(v)

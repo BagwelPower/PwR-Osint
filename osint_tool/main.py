@@ -20,7 +20,9 @@ from pwrosint.core.config import API_KEY_FIELDS, Settings, load_settings, save_s
 from pwrosint.core.context import Context
 from pwrosint.core.detect import suggest
 from pwrosint.core.history import History
-from pwrosint.core.registry import CATEGORIES, Action, InputError, Tool, all_tools, get_tool, parse_inputs
+from pwrosint.core.registry import (CATEGORIES, CATEGORY_INFO, Action, InputError, Tool, all_tools, get_tool,
+                                    parse_inputs)
+from pwrosint.core.samples import NEEDS_KEY, SAMPLES
 from pwrosint.core.report import Item, Level, Report
 from pwrosint.core.runner import run_action
 
@@ -124,6 +126,9 @@ class App:
                 pass
         elif route == "/settings":
             page.views.append(self.settings_view())
+        elif route == "/diagnostics":
+            page.views.append(self.settings_view())
+            page.views.append(Diagnostics(self).view())
         page.update()
 
     async def view_pop(self, e) -> None:
@@ -165,6 +170,7 @@ class App:
             if not tools:
                 continue
             body.append(self.section_title(cat))
+            body.append(ft.Text(CATEGORY_INFO[cat], size=11, color=MUTED))
             body.append(ft.ResponsiveRow(spacing=10, run_spacing=10, controls=[
                 self.tool_card(t) for t in tools]))
         body.append(ft.Container(height=24))
@@ -267,6 +273,8 @@ class App:
 
         controls += [
             ft.FilledButton("Kaydet", icon=ft.Icons.SAVE, on_click=save),
+            ft.OutlinedButton("Tanılama: tüm araçları bu cihazda test et", icon=ft.Icons.FACT_CHECK,
+                              on_click=lambda e: self.go("/diagnostics")),
             ft.Divider(color=SURFACE_HI),
             ft.Text("Bu araç yalnızca eğitim, araştırma ve izinli güvenlik testleri içindir. "
                     "Kişisel verileri izinsiz toplamak KVKK/GDPR kapsamında suçtur. "
@@ -336,14 +344,18 @@ class ToolScreen:
             self.inputs[f.name] = tf
             self.fields_col.controls.append(tf)
 
-        key = self.action.needs_key
+        required, optional = self.action.needs_key, self.action.better_with
+        key = required or optional
         if key and not getattr(self.app.settings, key):
             label = next((lbl for k, lbl, _ in API_KEY_FIELDS if k == key), key)
+            color = LEVEL_COLOR[Level.WARN] if required else ACCENT
+            text = (f"{label} API anahtarı gerekli" if required else
+                    f"Anahtarsız yedek kaynakla çalışır. {label} anahtarı eklerseniz daha ayrıntılı sonuç alırsınız.")
             self.key_banner.content = ft.Container(
-                bgcolor=ft.Colors.with_opacity(0.12, LEVEL_COLOR[Level.WARN]), border_radius=12, padding=12,
+                bgcolor=ft.Colors.with_opacity(0.10, color), border_radius=12, padding=12,
                 content=ft.Row([
-                    ft.Icon(ft.Icons.KEY, color=LEVEL_COLOR[Level.WARN], size=18),
-                    ft.Text(f"{label} API anahtarı gerekli", expand=True, size=13),
+                    ft.Icon(ft.Icons.KEY if required else ft.Icons.INFO_OUTLINE, color=color, size=18),
+                    ft.Text(text, expand=True, size=12),
                     ft.TextButton("Ayarlar", on_click=lambda e: self.app.go("/settings")),
                 ]))
         else:
@@ -415,14 +427,22 @@ class ToolScreen:
             controls.append(ft.Container(
                 bgcolor=ft.Colors.with_opacity(0.10, ACCENT), border_radius=12, padding=12,
                 content=ft.Text(report.summary, size=13)))
+        for msg in list(report.notices):
+            controls.append(self.banner(ft.Icons.INFO_OUTLINE, ACCENT, msg))
+        if report.missing_key:
+            service, _ = report.missing_key
+            controls.append(self.banner(ft.Icons.KEY, LEVEL_COLOR[Level.WARN],
+                                        f"Bu işlem için {service} API anahtarı gerekli.",
+                                        ft.TextButton("Ayarlar", on_click=lambda e: self.app.go("/settings"))))
         for msg in report.errors:
-            controls.append(ft.Container(
-                bgcolor=ft.Colors.with_opacity(0.12, LEVEL_COLOR[Level.BAD]), border_radius=12, padding=12,
-                content=ft.Row([ft.Icon(ft.Icons.ERROR_OUTLINE, color=LEVEL_COLOR[Level.BAD], size=18),
-                                ft.Text(msg, expand=True, size=13, selectable=True)])))
+            controls.append(self.banner(ft.Icons.ERROR_OUTLINE, LEVEL_COLOR[Level.BAD], msg))
+        if not partial and (hl := report.highlights()):
+            controls.append(self.highlights_card(hl))
         for sec in list(report.sections):
             if sec.items or sec.note:
                 controls.append(self.section_card(sec))
+        if not partial and report.sources:
+            controls.append(self.sources_card(report.sources))
         self.results.controls = controls
         self.page.update()
 
@@ -440,6 +460,43 @@ class ToolScreen:
             ft.IconButton(ft.Icons.SHARE, icon_size=18, tooltip="Paylaş", disabled=partial,
                           on_click=lambda e: self.page.run_task(self.share_report, report)),
         ])
+
+    @staticmethod
+    def banner(icon_name, color, text: str, action: Optional[ft.Control] = None) -> ft.Control:
+        row = [ft.Icon(icon_name, color=color, size=18), ft.Text(text, expand=True, size=12, selectable=True)]
+        if action:
+            row.append(action)
+        return ft.Container(bgcolor=ft.Colors.with_opacity(0.10, color), border_radius=12, padding=12,
+                            content=ft.Row(row, vertical_alignment=ft.CrossAxisAlignment.START))
+
+    def highlights_card(self, hl) -> ft.Control:
+        rows: list[ft.Control] = [ft.Row([ft.Icon(ft.Icons.PRIORITY_HIGH, color=LEVEL_COLOR[Level.BAD], size=18),
+                                          ft.Text("Önemli bulgular", weight=ft.FontWeight.BOLD, size=14)])]
+        for title, it in hl:
+            text = f"{it.label}: {it.value}" if it.value else it.label
+            rows.append(ft.Row(spacing=8, vertical_alignment=ft.CrossAxisAlignment.START, controls=[
+                ft.Icon(LEVEL_ICON[it.level], size=14, color=LEVEL_COLOR[it.level]),
+                ft.Column(spacing=0, expand=True, tight=True, controls=[
+                    ft.Text(text, size=12, color=TEXT, selectable=True),
+                    ft.Text(title, size=10, color=MUTED)])]))
+        return ft.Container(bgcolor=ft.Colors.with_opacity(0.08, LEVEL_COLOR[Level.BAD]), border_radius=14,
+                            border=ft.Border.all(1, ft.Colors.with_opacity(0.35, LEVEL_COLOR[Level.BAD])),
+                            padding=12, content=ft.Column(spacing=6, tight=True, controls=rows))
+
+    def sources_card(self, sources) -> ft.Control:
+        ok = sum(1 for _, good, _ in sources if good)
+        rows = [ft.Row(spacing=8, controls=[
+            ft.Icon(ft.Icons.CHECK_CIRCLE if good else ft.Icons.REMOVE_CIRCLE_OUTLINE, size=14,
+                    color=LEVEL_COLOR[Level.OK] if good else MUTED),
+            ft.Text(name, size=12, width=130),
+            ft.Text(detail, size=11, color=MUTED, expand=True)]) for name, good, detail in sources]
+        return ft.ExpansionTile(
+            title=ft.Text(f"Kaynak durumu · {ok}/{len(sources)} yanıt verdi", size=13),
+            subtitle=ft.Text("Limitli veya erişilemeyen kaynaklar sonucu bozmaz", size=11, color=MUTED),
+            leading=ft.Icon(ft.Icons.DNS_OUTLINED, color=MUTED, size=18), bgcolor=SURFACE, collapsed_bgcolor=SURFACE,
+            controls_padding=ft.Padding.only(left=16, right=12, bottom=10),
+            shape=ft.RoundedRectangleBorder(radius=14), collapsed_shape=ft.RoundedRectangleBorder(radius=14),
+            controls=rows)
 
     async def share_report(self, report: Report) -> None:
         try:
@@ -473,6 +530,7 @@ class ToolScreen:
             body = ft.Text(it.label, size=13, color=color, expand=True, font_family=MONO, selectable=not it.url)
 
         copy_text = it.url or it.value or it.label
+        pivot = self.pivot_button(it)
         return ft.Container(
             padding=ft.Padding.symmetric(vertical=6), border_radius=8,
             ink=bool(it.url),
@@ -480,7 +538,29 @@ class ToolScreen:
             on_long_press=lambda e, t=copy_text: self.page.run_task(self.app.copy, t, "Kopyalandı"),
             content=ft.Row(spacing=10, vertical_alignment=ft.CrossAxisAlignment.START, controls=[
                 ft.Icon(LEVEL_ICON[it.level], size=16, color=color if it.level != Level.INFO else MUTED),
-                body, *([ft.Icon(ft.Icons.OPEN_IN_NEW, size=14, color=MUTED)] if it.url else [])]))
+                body, *([pivot] if pivot else []),
+                *([ft.Icon(ft.Icons.OPEN_IN_NEW, size=14, color=MUTED)] if it.url else [])]))
+
+    def pivot_button(self, it: Item) -> Optional[ft.Control]:
+        """Sonuçtaki e-posta / IP / domain / kullanıcı adını başka bir araçla araştırma kısayolu."""
+        candidate = (it.value or it.label).strip()
+        if not candidate or len(candidate) > 120 or " " in candidate and "@" not in candidate:
+            return None
+        if self.report and candidate.lower() == (self.report.target or "").lower():
+            return None
+        from pwrosint.core.detect import suggest
+        hits = [s for s in suggest(candidate) if s.tool not in ("username", "name")] if "." in candidate or "@" in candidate else []
+        if not hits:
+            return None
+        s = hits[0]
+
+        def go(e):
+            self.app.prefill = {s.field: s.value, "_autorun": True}
+            self.app.go(f"/tool/{s.tool}/{s.action}")
+
+        return ft.IconButton(ft.Icons.TRAVEL_EXPLORE, icon_size=16, icon_color=ACCENT, on_click=go,
+                             tooltip=f"Araştır: {get_tool(s.tool).title}", width=30, height=30,
+                             style=ft.ButtonStyle(padding=0))
 
     # ------------------------------------------------ görünüm
     def view(self) -> ft.View:
@@ -489,6 +569,7 @@ class ToolScreen:
             top.append(ft.Row(scroll=ft.ScrollMode.AUTO, controls=[ft.SegmentedButton(
                 selected=[self.action.id], show_selected_icon=False, on_change=self.on_action_change,
                 segments=[ft.Segment(value=a.id, label=a.title) for a in self.tool.actions])]))
+        top.insert(0, self.info_tile())
         top += [self.key_banner, self.fields_col, ft.Row([self.run_btn, self.cancel_btn]), self.progress,
                 self.results]
         view = ft.View(
@@ -500,9 +581,108 @@ class ToolScreen:
             self.page.run_thread(self._autorun)
         return view
 
+    def info_tile(self) -> ft.Control:
+        t = self.tool
+        rows: list[ft.Control] = [ft.Text(t.description, size=12, color=TEXT)]
+        if t.sources:
+            rows.append(ft.Text("Kaynaklar: " + ", ".join(t.sources), size=11, color=MUTED))
+        if t.limits:
+            rows.append(ft.Row(spacing=6, vertical_alignment=ft.CrossAxisAlignment.START, controls=[
+                ft.Icon(ft.Icons.INFO_OUTLINE, size=13, color=LEVEL_COLOR[Level.WARN]),
+                ft.Text(t.limits, size=11, color=MUTED, expand=True)]))
+        return ft.ExpansionTile(
+            title=ft.Text(t.subtitle, size=13), subtitle=ft.Text("Bu araç ne yapar?", size=11, color=ACCENT),
+            leading=ft.Icon(icon(t.icon), color=ACCENT), bgcolor=SURFACE, collapsed_bgcolor=SURFACE,
+            controls_padding=ft.Padding.only(left=16, right=16, bottom=12),
+            shape=ft.RoundedRectangleBorder(radius=14), collapsed_shape=ft.RoundedRectangleBorder(radius=14),
+            controls=[ft.Column(spacing=6, tight=True, controls=rows)])
+
     def _autorun(self) -> None:
         time.sleep(0.05)  # görünüm ekrana yerleşsin
         self.run()
+
+
+# ---------------------------------------------------------------- tanılama
+
+class Diagnostics:
+    """Her aracı örnek girdiyle bu cihazda çalıştırır; telefondaki gerçek durumu gösterir."""
+
+    def __init__(self, app: App):
+        self.app, self.page = app, app.page
+        self.rows = ft.Column(spacing=4)
+        self.status = ft.Text("Henüz çalıştırılmadı", size=12, color=MUTED)
+        self.progress = ft.ProgressBar(value=0, color=ACCENT, bgcolor=SURFACE_HI, visible=False)
+        self.lines: list[str] = []
+        self.ctx: Optional[Context] = None
+
+    def start(self, e=None) -> None:
+        if self.ctx:
+            return
+        self.ctx = Context(self.app.settings)
+        self.rows.controls.clear()
+        self.lines.clear()
+        self.progress.visible = True
+        self.page.update()
+        self.page.run_thread(self.worker)
+
+    def worker(self) -> None:
+        jobs = [(t, a) for t in all_tools() for a in t.actions
+                if (t.id, a.id) in SAMPLES and (t.id, a.id) != ("username", "deep")]  # derin tarama çok uzun
+        counts = {"ok": 0, "warn": 0, "bad": 0}
+        for i, (tool, action) in enumerate(jobs, 1):
+            if self.ctx.cancel_event.is_set():
+                break
+            self.status.value = f"{i}/{len(jobs)} · {tool.title} · {action.title}"
+            self.progress.value = i / len(jobs)
+            self.page.update()
+            try:
+                values = parse_inputs(action, SAMPLES[(tool.id, action.id)])
+                rep = run_action(self.ctx, tool, action, values)
+                items = sum(len(s.items) for s in rep.sections)
+                if rep.errors:
+                    state, detail = "bad", rep.errors[0]
+                elif rep.missing_key:
+                    state, detail = ("ok" if (tool.id, action.id) in NEEDS_KEY else "warn"), "API anahtarı gerekli"
+                elif items < 2:
+                    state, detail = "warn", "çok az veri döndü"
+                else:
+                    failed = [n for n, ok, _ in rep.sources if not ok]
+                    state = "ok"
+                    detail = f"{items} sonuç · {rep.elapsed or 0:.1f} sn" + (
+                        f" · yanıtsız kaynak: {', '.join(failed)}" if failed else "")
+            except Exception as ex:  # tanılama ekranı asla çökmemeli
+                state, detail = "bad", f"{type(ex).__name__}: {ex}"
+            counts[state] += 1
+            color = {"ok": LEVEL_COLOR[Level.OK], "warn": LEVEL_COLOR[Level.WARN], "bad": LEVEL_COLOR[Level.BAD]}[state]
+            mark = {"ok": "✔", "warn": "!", "bad": "✖"}[state]
+            self.lines.append(f"{mark} {tool.id}/{action.id}: {detail}")
+            self.rows.controls.append(ft.Row(spacing=8, vertical_alignment=ft.CrossAxisAlignment.START, controls=[
+                ft.Icon(ft.Icons.CIRCLE, size=10, color=color),
+                ft.Column(spacing=0, expand=True, tight=True, controls=[
+                    ft.Text(f"{tool.title} · {action.title}", size=12),
+                    ft.Text(detail, size=11, color=MUTED, selectable=True)])]))
+        self.status.value = (f"Bitti: {counts['ok']} çalışıyor, {counts['warn']} uyarı, {counts['bad']} hata "
+                             f"({len(jobs)} işlem)")
+        self.progress.visible = False
+        self.ctx = None
+        self.page.update()
+
+    async def copy(self, e) -> None:
+        await self.app.copy(f"PwR Osint {__version__} tanılama\n{self.status.value}\n" + "\n".join(self.lines),
+                            "Tanılama sonucu kopyalandı")
+
+    def view(self) -> ft.View:
+        return ft.View(
+            route="/diagnostics", bgcolor=BG, padding=0,
+            appbar=ft.AppBar(title=ft.Text("Tanılama"), bgcolor=BG, actions=[
+                ft.IconButton(ft.Icons.CONTENT_COPY, tooltip="Sonucu kopyala",
+                              on_click=lambda e: self.page.run_task(self.copy, e))]),
+            controls=[ft.SafeArea(expand=True, content=ft.ListView(expand=True, padding=16, spacing=10, controls=[
+                ft.Text("Her aracı örnek bir girdiyle bu cihazdan gerçek servislere karşı çalıştırır. "
+                        "Sonucu kopyalayıp geliştiriciye gönderebilirsiniz. Yaklaşık 2-4 dakika sürer.",
+                        size=12, color=MUTED),
+                ft.FilledButton("Testi başlat", icon=ft.Icons.PLAY_ARROW, on_click=self.start),
+                self.status, self.progress, self.rows]))])
 
 
 def main(page: ft.Page) -> None:

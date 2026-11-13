@@ -75,6 +75,8 @@ def register(tool: Tool) -> Tool:
 
 def all_tools() -> list[Tool]:
     from .. import modules  # noqa: F401  — modüller içe aktarılınca kaydolur
+    from ..modules.docs import apply
+    apply(_TOOLS.values())
 
     order = {c: i for i, c in enumerate(CATEGORIES)}
     return sorted(_TOOLS.values(), key=lambda t: order.get(t.category, 99))

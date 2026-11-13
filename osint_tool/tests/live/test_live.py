@@ -169,3 +169,53 @@ def test_image_exif_gps():
     r = run("image", url=parse_url("https://raw.githubusercontent.com/ianare/exif-samples/master/jpg/gps/DSCN0010.jpg"))
     assert section(r, "EXIF")["Üretici"].value.startswith("NIKON")
     assert "GPS konumu" in [s.title for s in r.sections]
+
+
+# ---------------------------------------------------------------- 2.2: yedek kaynaklar ve derinleştirmeler
+
+def sources_ok(report):
+    return {n: ok for n, ok, _ in report.sources}
+
+
+def test_hibp_email_keyless_xposedornot():
+    r = run("hibp", "email", email="test@gmail.com")
+    assert not r.errors and not r.missing_key
+    assert sources_ok(r).get("XposedOrNot") is True
+    assert r.summary and "sızıntıda" in r.summary  # test@gmail.com çok sayıda sızıntıda
+
+
+def test_shodan_host_keyless_internetdb():
+    r = run("shodan", "host", ip="8.8.8.8")
+    assert "53" in section(r, "Host")["Açık portlar"].value
+
+
+def test_virustotal_keyless_otx():
+    r = run("virustotal", "domain", domain="github.com")
+    assert sources_ok(r).get("AlienVault OTX") is True, r.sources
+    assert "Tehdit raporu (pulse)" in section(r, "Tehdit istihbaratı")
+
+
+def test_name_real_records():
+    r = run("name", name="Linus Torvalds")
+    ok = sources_ok(r)
+    assert ok.get("OpenAlex") and ok.get("Wikidata") and ok.get("ORCID"), r.sources
+    assert any("Torvalds" in label for label in section(r, "Tanınmış"))
+
+
+def test_email_gravatar_profile():
+    # Gravatar'ın kendi destek adresi herkese açık bir profile sahiptir
+    r = run("email", email="beau@automattic.com")
+    assert sources_ok(r).get("Gravatar") is True
+    assert sources_ok(r).get("XposedOrNot") is True
+
+
+def test_reverse_ip_has_domains():
+    r = run("reverseip", target="github.com")
+    assert any(ok for _, ok, _ in r.sources)
+    assert not r.errors
+
+
+def test_username_deep_whatsmyname():
+    r = run("username", "deep", username="torvalds")
+    assert not r.errors
+    assert len(section(r, "Bulunan")) >= 10, r.summary
