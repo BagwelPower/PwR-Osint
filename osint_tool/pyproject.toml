@@ -1,14 +1,16 @@
 [project]
 name = "pwr-osint"
-version = "1.0.0"
-description = "PwR Osint - açık kaynak OSINT framework'ü (Android sürümü)"
+version = "2.0.0"
+description = "PwR Osint - açık kaynak OSINT framework'ü (terminal + Android)"
 readme = "README.md"
 requires-python = ">=3.10"
+license = { text = "MIT" }
 authors = [{ name = "BagwelPower" }]
+# Android paketine girenler; rich sadece terminal arayüzü için (requirements.txt).
 dependencies = [
   "flet==1.1.2",
   "requests>=2.31.0",
-  "colorama>=0.4.6",
+  "phonenumbers>=8.13",
 ]
 
 [tool.flet]
@@ -23,3 +25,6 @@ module = "main"
 
 [tool.flet.android]
 split_per_abi = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

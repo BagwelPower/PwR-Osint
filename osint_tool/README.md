@@ -1,189 +1,145 @@
 # PwR Osint
 
-**PwR Osint** — Python tabanlı, terminal menülü, kapsamlı OSINT (Open Source Intelligence) framework'ü. Kullanıcı adı, e-posta, telefon, isim, IP/domain, DNS, SSL, subdomain, BSSID, plaka, VIN, Wayback Machine ve daha fazlasını tek bir arayüzden sorgular.
+**PwR Osint**, Python ile yazılmış açık kaynak bir OSINT (Open Source Intelligence) framework'üdür. Aynı çekirdek üç arayüzden kullanılır:
+
+- 📱 **Android uygulaması**: kart tabanlı sonuçlar, akıllı arama, geçmiş, paylaşım
+- 💻 **Etkileşimli terminal**: renkli menü, Windows / Linux / macOS
+- ⚙️ **Komut satırı**: tek satırlık sorgular, `--json` çıktısı (betiklere bağlanabilir)
 
 > **Coded by BagwelPower**
 
 ---
 
-## 🎯 Özellikler
+## 🎯 Araçlar
 
-| Modül | Açıklama |
-|-------|----------|
-| **1. Username** | 37 platformda (GitHub, Twitter, Instagram, LinkedIn, Reddit, vb.) gerçek HTTP istekleriyle kullanıcı adı varlığını kontrol eder |
-| **2. E-posta** | Domain analizi, breach kontrolü, Gravatar, sosyal medya profilleri |
-| **3. Telefon** | Ülke/operatör tespiti (TR için Turkcell/Vodafone/TT), E.164 format, OSINT linkleri (WhatsApp, Truecaller, Sync.me) |
-| **4. İsim/Soyisim** | Google dork'ları, sosyal medya arama linkleri, akademik/kamu verisi kaynakları |
-| **5. IP & Domain** | Public/private IP tespiti, reverse DNS, WHOIS/GeoIP/Shodan/Censys linkleri |
-| **6. Gelişmiş** | Koordinat→Adres (Nominatim), BSSID→Konum+Vendor, Plaka→İl+Tip, VIN→Üretici+Yıl, Wayback Machine arşivi |
-| **7. DNS Kayıtları** | A, AAAA, MX, NS, TXT, CNAME, SOA + DoH (Google DNS) |
-| **8. SSL/TLS** | Sertifika detayları (SAN, geçerlilik, cipher, serial), SSL Labs linki |
-| **9. Subdomain Enum** | crt.sh, DNSDumpster, HackerTarget API ile 200+ subdomain keşfi |
-| **10. Ek E-posta** | Permutator (10 pattern), Hunter.io API entegrasyonu |
-| **11. HIBP** | E-posta sızma kontrolü, şifre sızma kontrolü (k-anonimlik) |
-| **12. Shodan** | Host sorgulama + arama (API key gerekli) |
-| **13. VirusTotal** | Domain/IP reputation + analiz (API key gerekli) |
-| **14. Config** | API anahtarları yönetimi (config.json) |
+| Kategori | Araç | Ne yapar | API anahtarı |
+|---|---|---|---|
+| Kişi | **Kullanıcı Adı** | 24 sitede gerçek kontrol (resmî API'ler, "profil yok" metni tespiti) + giriş isteyen 10 site için manuel kontrol linkleri | — |
+| | **E-posta** | MX / SPF / DMARC analizi, sağlayıcı tespiti, geçici e-posta tespiti, Gravatar · Permutator (Türkçe karakter desteği) · Hunter.io | Hunter (isteğe bağlı) |
+| | **Telefon** | `phonenumbers` ile geçerlilik, tür (mobil/sabit/VoIP), operatör tahsisi, bölge, saat dilimi, formatlar | — |
+| | **İsim / Soyisim** | Google dork'ları, platform aramaları, akademik/kamu kaynakları, kullanıcı adı adayları | — |
+| Ağ & Domain | **IP & Domain** | RDAP WHOIS (kayıt/bitiş tarihi, yeni kayıt uyarısı), konum & ASN, abuse iletişimi, **Shodan InternetDB** ile açık port ve CVE'ler | — |
+| | **DNS** | A, AAAA, CNAME, MX, NS, TXT, SOA, CAA (DNS-over-HTTPS) + SPF/DMARC/CAA değerlendirmesi | — |
+| | **SSL / TLS** | Sertifika doğrulama (bozuk sertifikada bile ayrıntı), kalan süre, SHA-256, protokol, SAN, HTTP güvenlik başlıkları | — |
+| | **Subdomain** | crt.sh, HackerTarget, AlienVault OTX, Anubis + canlılık kontrolü | — |
+| | **Web Arşivi** | Wayback Machine: ilk/son kayıt, ilginç dosyalar (.pdf, .sql, .env…), parametreli URL'ler | — |
+| Tehdit | **Sızıntı Kontrolü** | Şifre sızıntısı (k-anonimlik: şifre cihazdan çıkmaz) · e-posta sızıntıları | HIBP (e-posta için) |
+| | **Shodan** | Host detayı, servisler, zafiyetler · arama | Shodan |
+| | **VirusTotal** | Domain, IP ve dosya hash'i itibarı, işaretleyen motorlar | VirusTotal |
+| Diğer | **Konum** | Koordinat → adres (OpenStreetMap), harita/Street View linkleri · BSSID/MAC → üretici, rastgele MAC tespiti, WiGLE konumu | WiGLE (isteğe bağlı) |
+| | **Araç** | VIN: yapı, kontrol hanesi, model yılı, NHTSA çözümleme · TR plaka: il ve format doğrulama | — |
 
----
-
-## 🚀 Kurulum
-
-```bash
-# 1. Repoyu klonla
-git clone https://github.com/BagwelPower/PwR-Osint.git
-cd PwR-Osint
-
-# 2. Sanal ortam oluştur (önerilir)
-python -m venv venv
-# Windows:
-venv\Scripts\activate
-# Linux/Mac:
-source venv/bin/activate
-
-# 3. Bağımlılıkları yükle
-pip install -r requirements.txt
-
-# 4. (İsteğe bağlı) API keylerini ayarla
-# Menüden [14] seçeneğiyle veya config.json dosyasını düzenleyerek
-```
-
-### requirements.txt
-```text
-colorama>=0.4.6
-requests>=2.31.0
-```
+Anahtarsız araçlar kurulumdan hemen sonra çalışır.
 
 ---
 
-## 📱 Android Uygulaması
-
-PwR Osint artık telefonda da çalışıyor. Mobil arayüz (`main.py`) [Flet](https://flet.dev) ile yazıldı ve terminal sürümündeki modüllerin aynısını kullanır: çıktılar renkli bir konsolda gösterilir, linkler dokununca açılır, çıktı tek tuşla panoya kopyalanır. API anahtarları **Ayarlar** ekranından girilir ve yalnızca cihazda saklanır.
+## 📱 Android
 
 ### APK'yı indir
-Her push'ta GitHub Actions APK'yı otomatik derler:
-**Actions → Android APK → son çalıştırma → Artifacts → `PwR-Osint-apk`**.
-`v1.0.0` gibi bir tag push'lanırsa APK ayrıca **Releases** sayfasına eklenir.
+Her push'ta GitHub Actions testleri çalıştırır ve APK'yı derler:
+**Actions → CI & Android APK → son çalıştırma → Artifacts → `PwR-Osint-apk`** (zip içinde `.apk`).
+`v2.0.0` gibi bir tag push'lanırsa APK doğrudan **Releases** sayfasına da eklenir.
 
-Telefonda APK'yı açın; "bilinmeyen kaynaklardan yükleme" iznini bir kerelik verin.
+Kurulum: APK'ya dokunun ve "bilinmeyen kaynaklardan yükleme" iznini bir kerelik verin.
 
-### Kendin derle / dene
+### Özellikler
+- **Akıllı arama**: e-posta, IP, domain, telefon, hash, VIN, plaka, koordinat ya da kullanıcı adı yazın; uygulama türünü tanıyıp uygun aracı önerir ve çalıştırır.
+- Sonuçlar renkli kartlarda gösterilir (yeşil = iyi, sarı = dikkat, kırmızı = risk). Linke dokunmak onu açar, satıra uzun basmak kopyalar.
+- Rapor metin veya JSON olarak kopyalanabilir ya da paylaşılabilir. Uzun sorgular iptal edilebilir.
+- Son 30 arama saklanır (şifreler asla saklanmaz).
+
+---
+
+## 💻 Terminal
+
 ```bash
-cd osint_tool
-pip install "flet[all]==1.1.2" requests colorama
-flet run main.py          # masaüstünde önizleme
-flet run --android main.py  # telefondaki Flet uygulamasında QR ile dene
-flet build apk            # build/apk/ altına APK üretir (Flutter/JDK/SDK'yı kendisi kurar)
+git clone https://github.com/BagwelPower/PwR-Osint.git
+cd PwR-Osint/osint_tool
+python -m venv venv
+# Windows: venv\Scripts\activate   ·   Linux/macOS: source venv/bin/activate
+pip install -r requirements.txt
 ```
+
+```bash
+python osint_tool.py                     # etkileşimli menü
+python -m pwrosint --list                # tüm araçlar ve girdileri
+python -m pwrosint dns ornek.com         # tek komut
+python -m pwrosint email permutate Ahmet Yılmaz ornek.com
+python -m pwrosint host 8.8.8.8 --json   # makine okunur çıktı
+```
+
+Sorgu sürerken `Ctrl+C` sorguyu iptal eder, programı kapatmaz.
 
 ---
 
 ## ⚙️ Yapılandırma
 
-İlk çalıştırmada `config.json` otomatik oluşturulur. API keyleri menüden **[14] API Anahtar Yönetimi** ile girilebilir veya dosyayı doğrudan düzenleyebilirsiniz.
+API anahtarları uygulamanın **Ayarlar** ekranından veya terminal menüsündeki **A** seçeneğinden girilir. Dosya konumu:
 
-```json
-{
-  "shodan_api_key": "",
-  "virustotal_api_key": "",
-  "hunter_api_key": "",
-  "securitytrails_api_key": "",
-  "censys_api_id": "",
-  "censys_api_secret": "",
-  "whoisxml_api_key": "",
-  "haveibeenpwned_api_key": "",
-  "timeout": 10,
-  "user_agent": "PwR-Osint/1.0"
-}
-```
+| Ortam | Konum |
+|---|---|
+| Android | Uygulamanın özel veri dizini |
+| Terminal | `~/.pwr-osint/config.json` (çalışma dizininde `config.json` varsa o kullanılır) |
+| Özel | `PWR_OSINT_CONFIG=/yol/config.json` |
 
-**API Key Sağlayıcılar:**
-- **Shodan** → https://account.shodan.io/
-- **VirusTotal** → https://www.virustotal.com/gui/my-apikey
-- **Hunter.io** → https://hunter.io/api
-- **Have I Been Pwned** → https://haveibeenpwned.com/API/Key
-- **SecurityTrails** → https://securitytrails.com/app/api-keys
-- **Censys** → https://censys.io/account/api
-- **WhoisXML** → https://www.whoisxmlapi.com/
+Şablon için `config.json.example` dosyasına bakın. Dosya, sahibinden başka kimsenin okuyamayacağı izinlerle (`600`) yazılır.
+
+| Servis | Anahtar adresi |
+|---|---|
+| Shodan | https://account.shodan.io/ |
+| VirusTotal | https://www.virustotal.com/gui/my-apikey |
+| Hunter.io | https://hunter.io/api-keys |
+| Have I Been Pwned | https://haveibeenpwned.com/API/Key |
+| WiGLE | https://wigle.net/account |
+| IPinfo (isteğe bağlı, limit artırır) | https://ipinfo.io/account/token |
 
 ---
 
-## 💻 Kullanım
+## 🏗️ Mimari
 
+```
+osint_tool/
+├── main.py                 # Android / mobil arayüz (Flet)
+├── osint_tool.py           # Terminal başlatıcı (geriye dönük uyumluluk)
+├── pwrosint/
+│   ├── cli.py              # Terminal arayüzü (rich) + komut satırı
+│   ├── core/
+│   │   ├── report.py       # Yapılandırılmış sonuç modeli (Report → Section → Item)
+│   │   ├── registry.py     # Araç / işlem / alan tanımları
+│   │   ├── runner.py       # Çalıştırma, hata ve iptal yönetimi
+│   │   ├── http.py         # Ortak HTTP oturumu, yeniden deneme, okunur hatalar
+│   │   ├── dns.py          # DNS-over-HTTPS (Cloudflare → Google yedekli)
+│   │   ├── validate.py     # Girdi doğrulama ve normalleştirme
+│   │   ├── detect.py       # Akıllı arama
+│   │   ├── history.py      # Son aramalar
+│   │   └── config.py       # Ayarlar
+│   └── modules/            # person, network, threat, misc
+└── tests/                  # birim testleri (sahte HTTP) + tests/live (gerçek servisler)
+```
+
+Modüller ekrana hiçbir şey yazmaz, bir `Report` doldurur. Terminal, Android ve JSON çıktısı aynı raporu kendi biçiminde gösterir. Yeni bir araç eklemek için bir modülde `register(Tool(...))` çağırmak yeterlidir; menüler ve akıllı arama otomatik güncellenir.
+
+### Testler
 ```bash
-python osint_tool.py
-```
-
-Menüden numara girerek ilgili modülü çalıştırın. Her modül sonunda `ENTER` ile ana menüye dönebilirsiniz.
-
----
-
-## 📁 Proje Yapısı
-
-```
-PwR-Osint/
-├── osint_tool.py          # Ana program (terminal menü + routing)
-├── main.py                # Android / mobil arayüz (Flet)
-├── pyproject.toml         # flet build ayarları
-├── assets/icon.png        # Uygulama ikonu
-├── config.py              # Config yükleme/kaydetme
-├── config.json            # API keyler (gitignore'da)
-├── config.json.example    # Şablon dosyası
-├── requirements.txt       # Bağımlılıklar
-├── README.md              # Bu dosya
-├── LICENSE                # MIT Lisansı
-├── .gitignore             # Git hariç tutmalar
-└── osint_modules/
-    ├── __init__.py
-    ├── username.py
-    ├── email.py
-    ├── phone.py
-    ├── name.py
-    ├── ip_domain.py
-    ├── advanced.py
-    ├── dns_records.py
-    ├── ssl_cert.py
-    ├── subdomain.py
-    ├── email_extra.py
-    ├── hibp.py
-    ├── shodan_api.py
-    └── virustotal.py
+pip install -r requirements-dev.txt
+python -m pytest                        # birim testleri, internet gerekmez
+PWR_LIVE=1 python -m pytest tests/live  # gerçek servislere karşı duman testleri
 ```
 
 ---
 
-## ⚠️ Yasal Uyarı
+## ⚠️ Yasal uyarı
 
-Bu araç **yalnızca eğitim, araştırma ve kendi sistemlerinizdeki güvenlik testleri** için tasarlanmıştır. Başkalarına ait sistemlere yetkisiz erişim, bilgi toplama veya herhangi bir saldırı **yasadışıdır** ve **etik değildir**.
+Bu araç **yalnızca eğitim, araştırma ve kendi sistemlerinizdeki ya da yazılı izin aldığınız hedeflerdeki güvenlik testleri** için tasarlanmıştır.
 
-- Sadece **kendi** ağlarınız, domainleriniz, hesaplarınız üzerinde kullanın.
-- Başkalarının verilerini izinsiz toplamayın.
-- Yerel yasalarınıza (Türkiye'de 5651 sayılı Kanun, TBK, KVKK; AB'de GDPR) uyun.
+- Başkalarının kişisel verilerini izinsiz toplamayın, saklamayın, paylaşmayın.
+- Yerel yasalara uyun: Türkiye'de KVKK ve TCK 243–245, AB'de GDPR.
+- Servislerin kullanım koşullarına ve istek limitlerine uyun.
 
 **Sorumluluk tamamen kullanıcıya aittir.**
 
 ---
 
-## 🤝 Katkı
-
-1. Fork yapın
-2. Feature branch oluşturun (`git checkout -b feature/yeni-modul`)
-3. Değişikliklerinizi commit edin (`git commit -m 'Yeni modul: X'`)
-4. Push yapın (`git push origin feature/yeni-modul`)
-5. Pull Request açın
-
----
-
 ## 📜 Lisans
 
-MIT License — detaylar için `LICENSE` dosyasına bakın.
-
----
-
-## 👨‍💻 Yazar
-
-**BagwelPower** — `Coded by BagwelPower`
-
----
-
-⭐ Bu projeyi beğendiyseniz yıldızlamayı unutmayın!
+MIT. Ayrıntılar için `LICENSE` dosyasına bakın.
