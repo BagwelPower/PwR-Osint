@@ -33,7 +33,7 @@ Aynı çekirdek üç arayüzden kullanılır:
 
 | Kategori | Araç | Ne yapar | Anahtar |
 |---|---|---|---|
-| **Kişi** | Kullanıcı Adı | Hızlı tarama 23 sitede resmî API'lerle çalışır. Derin tarama, [WhatsMyName](https://github.com/WebBreacher/WhatsMyName) veri setiyle **650'den fazla** sitede yaklaşık 15 saniye sürer. | — |
+| **Kişi** | Kullanıcı Adı | Hızlı tarama 23 sitede resmî API'lerle çalışır. Derin tarama, [WhatsMyName](https://github.com/WebBreacher/WhatsMyName) veri setiyle **650'den fazla** sitede tarar (hızlı bir bağlantıda yaklaşık 15 saniye; mobil ağda daha uzun sürebilir). | — |
 | | E-posta | MX, SPF ve DMARC; Gravatar profili ve doğrulanmış hesaplar; bilinen sızıntılar; kurumsal domainin yaşı. Ad soyaddan adres üretir, domainin sitesindeki adresleri toplar. | Hunter (isteğe bağlı) |
 | | Telefon | Geçerlilik, tür, operatör tahsisi, bölge, saat dilimi, biçimler (libphonenumber). | — |
 | | İsim / Soyisim | GitHub kullanıcıları, OpenAlex akademik yazarları, ORCID ve Wikidata kayıtları, hedefli Google dork'ları. | — |
@@ -49,7 +49,7 @@ Aynı çekirdek üç arayüzden kullanılır:
 | | Web Arşivi | Wayback Machine'deki ilk ve son kayıt, arşivlenmiş ilginç dosyalar ve parametreli URL'ler. | — |
 | | Reverse IP | Aynı sunucudaki diğer siteler. | — |
 | | ASN / BGP | Ağ sahibi, IP blokları, üst sağlayıcılar (RIPEstat). | — |
-| **Web** | Site Analizi | yaklaşık 60 teknoloji imzası; sayfadaki e-posta, telefon ve sosyal hesaplar; **Analytics, AdSense ve Pixel kimlikleri**; robots.txt, sitemap, security.txt. | — |
+| **Web** | Site Analizi | Yaklaşık 60 teknoloji imzası; sayfadaki e-posta, telefon ve sosyal hesaplar; **Analytics, AdSense ve Pixel kimlikleri**; robots.txt, sitemap, security.txt. | — |
 | | urlscan.io | Geçmiş taramalar, görülen IP'ler, zararlı işaretleri. | — |
 | | Google Dork | Belgeler, açık dizinler, paneller ve sızıntı siteleri için 12 hazır sorgu. | — |
 | **Tehdit İstihbaratı** | Sızıntı Kontrolü | E-postanın bulunduğu sızıntılar, sızan veri türleri, şifre saklama riski. Şifre sızıntısı k-anonimlikle kontrol edilir, şifre cihazdan çıkmaz. Şifre gücünü de ölçer. | HIBP (isteğe bağlı) |
