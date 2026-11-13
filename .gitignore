@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+osint_tool/config.json
+osint_tool/build/

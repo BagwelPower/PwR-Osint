@@ -1,0 +1,25 @@
+[project]
+name = "pwr-osint"
+version = "1.0.0"
+description = "PwR Osint - açık kaynak OSINT framework'ü (Android sürümü)"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "BagwelPower" }]
+dependencies = [
+  "flet==1.1.2",
+  "requests>=2.31.0",
+  "colorama>=0.4.6",
+]
+
+[tool.flet]
+org = "com.bagwelpower"
+product = "PwR Osint"
+company = "BagwelPower"
+copyright = "Copyright (C) 2024 BagwelPower"
+
+[tool.flet.app]
+path = "."
+module = "main"
+
+[tool.flet.android]
+split_per_abi = false

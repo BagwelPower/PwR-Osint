@@ -10,7 +10,7 @@
 
 | Modül | Açıklama |
 |-------|----------|
-| **1. Username** | 37 platformda (GitHub, Twitter, Instagram, LinkedIn, Reddit, vb.) kullanıcı adı varlığını kontrol eder |
+| **1. Username** | 37 platformda (GitHub, Twitter, Instagram, LinkedIn, Reddit, vb.) gerçek HTTP istekleriyle kullanıcı adı varlığını kontrol eder |
 | **2. E-posta** | Domain analizi, breach kontrolü, Gravatar, sosyal medya profilleri |
 | **3. Telefon** | Ülke/operatör tespiti (TR için Turkcell/Vodafone/TT), E.164 format, OSINT linkleri (WhatsApp, Truecaller, Sync.me) |
 | **4. İsim/Soyisim** | Google dork'ları, sosyal medya arama linkleri, akademik/kamu verisi kaynakları |
@@ -52,6 +52,28 @@ pip install -r requirements.txt
 ```text
 colorama>=0.4.6
 requests>=2.31.0
+```
+
+---
+
+## 📱 Android Uygulaması
+
+PwR Osint artık telefonda da çalışıyor. Mobil arayüz (`main.py`) [Flet](https://flet.dev) ile yazıldı ve terminal sürümündeki modüllerin aynısını kullanır: çıktılar renkli bir konsolda gösterilir, linkler dokununca açılır, çıktı tek tuşla panoya kopyalanır. API anahtarları **Ayarlar** ekranından girilir ve yalnızca cihazda saklanır.
+
+### APK'yı indir
+Her push'ta GitHub Actions APK'yı otomatik derler:
+**Actions → Android APK → son çalıştırma → Artifacts → `PwR-Osint-apk`**.
+`v1.0.0` gibi bir tag push'lanırsa APK ayrıca **Releases** sayfasına eklenir.
+
+Telefonda APK'yı açın; "bilinmeyen kaynaklardan yükleme" iznini bir kerelik verin.
+
+### Kendin derle / dene
+```bash
+cd osint_tool
+pip install "flet[all]==1.1.2" requests colorama
+flet run main.py          # masaüstünde önizleme
+flet run --android main.py  # telefondaki Flet uygulamasında QR ile dene
+flet build apk            # build/apk/ altına APK üretir (Flutter/JDK/SDK'yı kendisi kurar)
 ```
 
 ---
@@ -100,7 +122,10 @@ Menüden numara girerek ilgili modülü çalıştırın. Her modül sonunda `ENT
 
 ```
 PwR-Osint/
-├── osint_tool.py          # Ana program (menü + routing)
+├── osint_tool.py          # Ana program (terminal menü + routing)
+├── main.py                # Android / mobil arayüz (Flet)
+├── pyproject.toml         # flet build ayarları
+├── assets/icon.png        # Uygulama ikonu
 ├── config.py              # Config yükleme/kaydetme
 ├── config.json            # API keyler (gitignore'da)
 ├── config.json.example    # Şablon dosyası

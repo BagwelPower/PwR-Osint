@@ -1,8 +1,30 @@
-import re
-import sys
-import time
+from concurrent.futures import ThreadPoolExecutor
+
+import requests
 from colorama import Fore, Style
-from urllib.parse import quote
+from config import load_config
+
+config = load_config()
+
+_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.8",
+}
+
+
+def _check(url):
+    """True = profil var, False = yok, str = belirsiz (HTTP kodu / hata)."""
+    try:
+        resp = requests.get(url, headers=_HEADERS, timeout=config.get("timeout", 10),
+                            allow_redirects=True)
+    except requests.RequestException:
+        return "HATA"
+    if resp.status_code == 404 or resp.status_code == 410:
+        return False
+    if resp.status_code == 200:
+        return True
+    return str(resp.status_code)
 
 def search_username(username):
     """Kullanıcı adını internet genelinde arar."""
@@ -57,21 +79,24 @@ def search_username(username):
 
     found = 0
     not_found = 0
+    unknown = 0
 
-    for name, url in platforms.items():
-        try:
-            # Basit URL doğrulama (network erişimi simülasyonu)
-            # Gerçek tool'da burada requests.get() kullanılacak
-            status = "✅ VAR" if len(username) % 3 != 0 else "❌ YOK"
-            if status == "✅ VAR":
-                print(Fore.GREEN + f"  {status:<10} | {name:<15} | {url}" + Style.RESET_ALL)
-                found += 1
-            else:
-                print(Fore.RED + f"  {status:<10} | {name:<15} | {url}" + Style.RESET_ALL)
-                not_found += 1
-        except Exception as e:
-            print(Fore.RED + f"  ⚠️ HATA  | {name:<15} | {e}" + Style.RESET_ALL)
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        results = list(pool.map(lambda item: (item[0], item[1], _check(item[1])), platforms.items()))
+
+    for name, url, status in results:
+        if status is True:
+            print(Fore.GREEN + f"  {'✅ VAR':<10} | {name:<15} | {url}" + Style.RESET_ALL)
+            found += 1
+        elif status is False:
+            print(Fore.RED + f"  {'❌ YOK':<10} | {name:<15} | {url}" + Style.RESET_ALL)
+            not_found += 1
+        else:
+            print(Fore.YELLOW + f"  {'❔ ' + status:<10} | {name:<15} | {url}" + Style.RESET_ALL)
+            unknown += 1
 
     print(Fore.CYAN + Style.BRIGHT + f"\n{'='*60}")
-    print(f"Sonuç: {found} platformda VAR, {not_found} platformda YOK")
+    print(f"Sonuç: {found} platformda VAR, {not_found} platformda YOK, {unknown} belirsiz")
+    print("Not: Bazı siteler bot korumasıyla her isteğe aynı yanıtı verir;")
+    print("     'VAR' sonuçlarını linke tıklayarak doğrulayın.")
     print(f"{'='*60}" + Style.RESET_ALL)
