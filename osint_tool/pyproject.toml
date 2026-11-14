@@ -1,0 +1,38 @@
+[project]
+name = "pwr-osint"
+version = "2.3.0"
+description = "PwR Osint - açık kaynak OSINT framework'ü (terminal + Android)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "BagwelPower" }]
+# Android paketine girenler; rich sadece terminal arayüzü için (requirements.txt).
+dependencies = [
+  "flet==1.1.2",
+  "requests>=2.31.0",
+  "phonenumbers>=8.13",
+]
+
+[tool.flet]
+org = "com.bagwelpower"
+product = "PwR Osint"
+company = "BagwelPower"
+copyright = "Copyright (C) 2024 BagwelPower"
+
+[tool.flet.app]
+path = "."
+module = "main"
+
+[tool.flet.android]
+split_per_abi = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["F", "E9", "B", "UP"]
+ignore = ["UP007", "UP045", "B008", "B905"]

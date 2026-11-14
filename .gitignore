@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+osint_tool/config.json
+osint_tool/build/
+osint_tool/history.json
+.pytest_cache/
