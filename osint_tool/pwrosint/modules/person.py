@@ -30,7 +30,9 @@ class Site:
 
 
 SITES: tuple[Site, ...] = (
-    Site("GitHub", "https://github.com/{}", "https://api.github.com/users/{}"),
+    # API saatte 60 istekle sınırlı; limit dolarsa herkese açık profil sayfasına bakılır.
+    Site("GitHub", "https://github.com/{}", "https://api.github.com/users/{}",
+         fallback="https://github.com/{}", fallback_present="p-nickname"),
     Site("GitLab", "https://gitlab.com/{}", "https://gitlab.com/api/v4/users?username={}", absent="[]"),
     Site("Reddit", "https://www.reddit.com/user/{}", "https://www.reddit.com/user/{}/about.json",
          fallback="https://arctic-shift.photon-reddit.com/api/comments/search?author={}&limit=1",

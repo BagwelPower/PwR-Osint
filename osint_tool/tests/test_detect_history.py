@@ -9,7 +9,16 @@ from pwrosint.core.registry import get_tool
     ("ali@ornek.com", "email", "analyze"),
     ("8.8.8.8", "host", "profile"),
     ("+90 532 123 45 67", "phone", "analyze"),
-    ("44d88612fea8a8f36de82e1278abb02f", "virustotal", "file"),
+    ("44d88612fea8a8f36de82e1278abb02f", "hash", "identify"),
+    ("CVE-2021-44228", "cve", "lookup"),
+    ("cve-2023-4966", "cve", "lookup"),
+    ("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc", "decoder", "jwt"),
+    ("Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc", "decoder", "jwt"),
+    ("192.168.1.0/24", "subnet", "calc"),
+    ("10.0.0.0 255.255.0.0", "subnet", "calc"),
+    ("2001:db8::/48", "subnet", "calc"),
+    ("$2y$10$abcdefghijklmnopqrstuuJ8vQmA9b7wY2l9w0w6g7v9wQeKk6x2.", "hash", "identify"),
+    ("Received: from a.com by b.com; Mon, 1 Jan 2024\nFrom: x@y.com\nTo: z@w.com", "emailheader", "analyze"),
     ("00:11:22:33:44:55", "geo", "bssid"),
     ("41.0082, 28.9784", "geo", "coords"),
     ("1HGCM82633A004352", "vehicle", "vin"),
@@ -50,7 +59,8 @@ def test_history_dedupes_and_skips_passwords(tmp_path):
 
 def test_every_suggestion_points_to_real_field():
     samples = ["ali@ornek.com", "8.8.8.8", "github.com", "torvalds", "https://ornek.com/a.png",
-               "AS15169", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", "Ahmet Yılmaz"]
+               "AS15169", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", "Ahmet Yılmaz", "CVE-2021-44228",
+               "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc", "192.168.1.0/24", "5f4dcc3b5aa765d61d8327deb882cf99"]
     for text in samples:
         for s in suggest(text):
             action = get_tool(s.tool).action(s.action)

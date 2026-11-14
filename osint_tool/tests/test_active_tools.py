@@ -10,6 +10,7 @@ from pwrosint.modules import nettools
 from test_modules import items, run
 
 REAL_PROBE = nettools.probe_port
+REAL_IFACE = nettools.interface_for_ip  # conftest her testte sahtesini koyar; gerçeği burada saklanır
 
 
 @pytest.fixture
@@ -73,12 +74,40 @@ def test_portscan_requires_consent():
 
 @pytest.mark.parametrize("lip, ok", [("192.168.1.23", True), ("10.5.0.7", True), ("100.70.1.2", False),
                                      ("88.230.1.2", False), (None, False)])
-def test_lan_only_private_wifi(lip, ok):
+def test_lan_ip_rules_on_wifi_interface(lip, ok):
     if ok:
-        assert str(nettools.lan_network(lip)).endswith("/24")
+        assert str(nettools.lan_network(lip, "wlan0")).endswith("/24")
     else:
         with pytest.raises(OsintError):
-            nettools.lan_network(lip)
+            nettools.lan_network(lip, "wlan0")
+
+
+@pytest.mark.parametrize("iface", ["rmnet_data0", "ccmni1", "v4-rmnet_data2", "wwan0"])
+def test_lan_refuses_mobile_interfaces_even_with_private_ip(iface):
+    # Operatörler mobil veride de 10.x verebilir: özel IP tek başına yetmez.
+    with pytest.raises(OsintError) as e:
+        nettools.lan_network("10.5.0.7", iface)
+    assert "mobil veri" in str(e.value)
+
+
+def test_lan_refuses_when_app_reports_mobile():
+    with pytest.raises(OsintError):
+        nettools.lan_network("10.5.0.7", "wlan0", connectivity={"mobile"})
+    assert nettools.lan_network("192.168.1.5", "wlan0", connectivity={"wifi"})
+
+
+def test_lan_fails_closed_on_android_without_interface(monkeypatch):
+    monkeypatch.setattr(nettools, "on_android", lambda: True)
+    with pytest.raises(OsintError):
+        nettools.lan_network("192.168.1.5", None)
+    assert nettools.lan_network("192.168.1.5", None, connectivity={"wifi"})  # uygulama Wi-Fi diyorsa
+    with pytest.raises(OsintError):
+        nettools.lan_network("192.168.1.5", "tun0")  # VPN vb. tanınmayan arayüz
+
+
+def test_interface_lookup_real():
+    assert REAL_IFACE("127.0.0.1") in ("lo", None)  # Linux'ta 'lo'; desteklenmeyen platformda None
+    assert REAL_IFACE("203.0.113.250") is None
 
 
 def test_lan_discovery(ctx, monkeypatch):

@@ -26,6 +26,28 @@ def suggest(raw: str) -> list[Suggestion]:
     def add(tool, action, field, value, reason):
         out.append(Suggestion(tool, action, field, value, reason))
 
+    # --- bilişimci girdileri (kullanıcı adı / domain kurallarından önce)
+    if re.search(r"(?mi)^(received|authentication-results|return-path|message-id|dkim-signature):", text) or \
+            (text.count("\n") >= 2 and re.search(r"(?mi)^from:", text)):
+        add("emailheader", "analyze", "headers", text, "E-posta başlıkları")
+        return out
+    if re.fullmatch(r"(?i)cve[-_ ]?\d{4}[-_ ]\d{4,7}", text):
+        cid = re.sub(r"[_ ]", "-", text.upper())
+        if not cid.startswith("CVE-"):
+            cid = "CVE-" + cid[3:].lstrip("-")
+        add("cve", "lookup", "cve", cid, "CVE numarası")
+        return out
+    token = text[7:].strip() if text.lower().startswith("bearer ") else text
+    if re.fullmatch(r"eyJ[\w-]+\.[\w-]+\.[\w-]*", token):
+        add("decoder", "jwt", "token", token, "JWT token")
+        return out
+    if re.fullmatch(r"[\d.]+/\d{1,2}|[\d.]+ \d+\.\d+\.\d+\.\d+|[0-9a-fA-F:]+/\d{1,3}", text):
+        add("subnet", "calc", "net", text, "Ağ / CIDR")
+        return out
+    if re.fullmatch(r"\$(2[abxy]?|argon2(id|i|d)|[156y]|P|H)\$.+", text):
+        add("hash", "identify", "hash", text, "Parola hash'i")
+        return out
+
     try:
         email = validate.email(text)
         add("email", "analyze", "email", email, "E-posta")
@@ -79,7 +101,8 @@ def suggest(raw: str) -> list[Suggestion]:
         return out
 
     if re.fullmatch(r"[0-9a-fA-F]{32}|[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", text):
-        add("virustotal", "file", "hash", text.lower(), "Dosya hash'i")
+        add("hash", "identify", "hash", text, "Hash türünü tanı")
+        add("virustotal", "file", "hash", text.lower(), "Dosya hash'i (tehdit itibarı)")
         return out
 
     try:

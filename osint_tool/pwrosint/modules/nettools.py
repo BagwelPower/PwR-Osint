@@ -454,15 +454,60 @@ def guess_device(open_ports: set[int], is_gateway: bool) -> str:
     return "Bilinmeyen cihaz"
 
 
-def lan_network(lip: Optional[str]) -> ipaddress.IPv4Network:
+MOBILE_IFACES = ("rmnet", "ccmni", "wwan", "pdp", "v4-rmnet", "rev_rmnet", "seth", "radio", "usb")
+LOCAL_IFACES = ("wlan", "wl", "eth", "en", "ap", "swlan", "p2p")
+
+
+def interface_for_ip(ip: str) -> Optional[str]:
+    """Yerel IP'nin ait olduğu ağ arayüzünün adı (Linux/Android, SIOCGIFCONF). Bulunamazsa None."""
+    try:
+        import array
+        import fcntl
+        import struct
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            buf = array.array("B", b"\0" * 8192)
+            out = fcntl.ioctl(s.fileno(), 0x8912, struct.pack("iL", 8192, buf.buffer_info()[0]))
+            size = struct.unpack("iL", out)[0]
+        data = buf.tobytes()
+        step = 40 if struct.calcsize("L") == 8 else 32
+        for i in range(0, size, step):
+            name = data[i:i + 16].split(b"\0", 1)[0].decode(errors="replace")
+            if socket.inet_ntoa(data[i + 20:i + 24]) == ip:
+                return name
+    except (ImportError, OSError, ValueError, OverflowError):
+        return None
+    return None
+
+
+def on_android() -> bool:
+    import os
+    import sys
+    return hasattr(sys, "getandroidapilevel") or "ANDROID_ROOT" in os.environ
+
+
+def lan_network(lip: Optional[str], iface: Optional[str] = None,
+                connectivity: Optional[set[str]] = None) -> ipaddress.IPv4Network:
+    """Yalnızca cihazın kendi Wi-Fi/ethernet ağı. Mobil veride operatörler de özel (10.x) IP verebilir;
+    bu yüzden IP'nin özel olması yetmez, bağlantının Wi-Fi/ethernet arayüzünden gittiği doğrulanır."""
+    wifi_msg = "Yerel ağ taraması yalnızca Wi-Fi (veya ethernet) bağlantısında yapılabilir. Wi-Fi'ye bağlanın."
     if not lip:
         raise OsintError("Yerel IP bulunamadı; Wi-Fi'ye bağlı olduğunuzdan emin olun")
     addr = ipaddress.ip_address(lip)
     if addr in ipaddress.ip_network("100.64.0.0/10"):
-        raise OsintError("Operatör (CGNAT) ağındasınız; yerel ağ taraması yalnızca Wi-Fi'de yapılabilir. "
-                         "Wi-Fi'ye bağlanın.")
+        raise OsintError("Operatör (CGNAT) ağındasınız. " + wifi_msg)
     if not addr.is_private or addr.is_loopback:
-        raise OsintError("Cihaz özel bir yerel ağda değil (mobil veri veya public IP). Wi-Fi'ye bağlanın.")
+        raise OsintError("Cihaz özel bir yerel ağda değil (mobil veri veya public IP). " + wifi_msg)
+    if connectivity is not None and not connectivity & {"wifi", "ethernet"}:
+        raise OsintError("Cihaz şu anda Wi-Fi'de değil (bağlantı: " + (", ".join(sorted(connectivity)) or "yok")
+                         + "). " + wifi_msg)
+    if iface:
+        low = iface.lower()
+        if low.startswith(MOBILE_IFACES):
+            raise OsintError(f"Bağlantı mobil veri arayüzünden ({iface}) gidiyor. " + wifi_msg)
+        if not low.startswith(LOCAL_IFACES) and on_android():
+            raise OsintError(f"Ağ arayüzü ({iface}) Wi-Fi olarak doğrulanamadı. " + wifi_msg)
+    elif on_android() and not (connectivity and connectivity & {"wifi", "ethernet"}):
+        raise OsintError("Ağ arayüzü belirlenemedi; güvenlik için tarama yapılmadı. " + wifi_msg)
     return ipaddress.ip_network(f"{lip}/24", strict=False)
 
 
@@ -470,7 +515,8 @@ def _lan(ctx: Context, rep: Report, v: dict) -> None:
     from concurrent.futures import ThreadPoolExecutor
 
     lip = local_ip()
-    net = lan_network(lip)
+    iface = interface_for_ip(lip) if lip else None
+    net = lan_network(lip, iface, ctx.connectivity)
     hosts = [str(h) for h in net.hosts()]
     gateway = str(net.network_address + 1)
 
@@ -511,7 +557,7 @@ def _lan(ctx: Context, rep: Report, v: dict) -> None:
                                                 if ports else "") if x),
                 level=Level.WARN if ports & {23, 3389, 445, 5900} and ip != lip else Level.INFO)
     info = rep.section("Tarama")
-    info.add("Ağ", f"{net} · bu cihaz {lip} · ağ geçidi (tahmini) {gateway}")
+    info.add("Ağ", f"{net} · bu cihaz {lip} · ağ geçidi (tahmini) {gateway}" + (f" · arayüz {iface}" if iface else ""))
     info.add("Süre", f"{time.monotonic() - start:.0f} sn · {len(hosts)} adres × {len(LAN_PORTS)} port")
     info.note = ("Android 10+ MAC adreslerini uygulamalardan gizlediği için cihaz türü açık portlardan tahmin "
                  "edilir. Port açmayan ve ICMP dışında yanıt vermeyen cihazlar görünmeyebilir.")
@@ -547,9 +593,16 @@ def _speed(ctx: Context, rep: Report, v: dict, upload: bool = False) -> None:
         for size in (1_000_000, 5_000_000, (v.get("mb") or 10) * 1_000_000):
             ctx.check_cancelled()
             t = time.perf_counter()
-            r = http.get(f"{SPEED}/__down", params={"bytes": size}, timeout=60)
+            r = http.get(f"{SPEED}/__down", params={"bytes": size}, timeout=60, stream=True)
+            n = 0
+            try:
+                for chunk in r.iter_content(256 * 1024):  # bellekte tutmadan say
+                    n += len(chunk)
+                    if ctx.cancel_event.is_set():
+                        break
+            finally:
+                r.close()
             secs = time.perf_counter() - t
-            n = len(r.content)
             used += n
             if n and secs > 0:
                 speeds.append(n * 8 / secs / 1e6)

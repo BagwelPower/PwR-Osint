@@ -21,6 +21,8 @@ class Context:
         self.http = http or Http(settings.user_agent, settings.timeout)
         self.cancel_event = threading.Event()
         self._fast_http: Http | None = None
+        # Arayüzün bildirdiği bağlantı türleri (ör. {"wifi"}, {"mobile"}); bilinmiyorsa None.
+        self.connectivity: set[str] | None = None
 
     @property
     def fast_http(self) -> Http:

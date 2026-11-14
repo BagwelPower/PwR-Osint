@@ -92,6 +92,7 @@ class App:
         self.clipboard = ft.Clipboard()
         self.share = ft.Share()
         self.file_picker = ft.FilePicker()
+        self.connectivity = ft.Connectivity()
         self.store = ReportStore()
         self.prefill: dict = {}
 
@@ -515,7 +516,19 @@ class ToolScreen:
         self.ctx = Context(self.app.settings)
         self.results.controls.clear()
         self.set_running(True)
-        self.page.run_thread(self.worker, self.ctx, values)
+        if self.tool.id == "lan":
+            self.page.run_task(self._start_with_connectivity, self.ctx, values)
+        else:
+            self.page.run_thread(self.worker, self.ctx, values)
+
+    async def _start_with_connectivity(self, ctx: Context, values: dict) -> None:
+        """Yerel ağ taraması yalnızca Wi-Fi/ethernet'te: bağlantı türünü cihazdan öğren."""
+        try:
+            kinds = await self.app.connectivity.get_connectivity()
+            ctx.connectivity = {str(getattr(k, "value", k)).lower() for k in kinds or []}
+        except Exception:
+            ctx.connectivity = None  # bilinmiyor: çekirdek arayüz adına göre karar verir (Android'de kapalı)
+        self.page.run_thread(self.worker, ctx, values)
 
     def worker(self, ctx: Context, values: dict) -> None:
         report = run_action(ctx, self.tool, self.action, values, on_change=self.on_progress)

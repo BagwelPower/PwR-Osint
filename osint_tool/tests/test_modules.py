@@ -42,7 +42,8 @@ def test_check_site_strategies(ctx, http):
     assert person.check_site(ctx, tg, "yok")[0] == person.MISSING
 
     http.add("https://api.github.com/users/bot", "", status=429)
-    assert person.check_site(ctx, gh, "bot") == (person.UNKNOWN, "HTTP 429")
+    status, why = person.check_site(ctx, gh, "bot")
+    assert status == person.UNKNOWN and why.startswith("HTTP 429")  # yedek de doğrulayamadı
 
 
 def test_username_report_groups_results(ctx, http):
@@ -304,3 +305,10 @@ def test_tls_uses_certifi_bundle():
     assert ctx.verify_mode.name == "CERT_REQUIRED" and ctx.check_hostname
     assert ctx.cert_store_stats()["x509_ca"] > 50  # certifi paketi yüklendi
     assert certifi.where()
+
+
+def test_github_check_survives_api_rate_limit(ctx, http):
+    gh = next(s for s in person.SITES if s.name == "GitHub")
+    http.add("https://api.github.com/users/ali", {"message": "API rate limit exceeded"}, status=403)
+    http.add("https://github.com/ali", '<span class="p-nickname vcard-username">ali</span>')
+    assert person.check_site(ctx, gh, "ali")[0] == person.FOUND

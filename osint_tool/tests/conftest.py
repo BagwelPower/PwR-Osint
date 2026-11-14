@@ -95,6 +95,7 @@ def offline_dns(request, monkeypatch):
     monkeypatch.setattr(nettools, "local_ip", lambda: "192.168.1.23")
     monkeypatch.setattr(nettools, "tcp_rtt", lambda *a, **k: None)
     monkeypatch.setattr(nettools, "probe_port", lambda *a, **k: ("filtered", ""))
+    monkeypatch.setattr(nettools, "interface_for_ip", lambda ip: "wlan0")
     yield
     dns.reset_health()
 
