@@ -28,8 +28,11 @@ ALL = [(t, a) for t in all_tools() for a in t.actions if (t.id, a.id) not in SKI
 @pytest.mark.parametrize("tool, action", ALL, ids=[f"{t.id}-{a.id}" for t, a in ALL])
 def test_real_response(tool, action):
     values = parse_inputs(action, SAMPLES[(tool.id, action.id)])
+    import time
+    t = time.monotonic()
     report = run_action(Context(Settings(timeout=25)), tool, action, values)
     print(report.to_text())
+    print(f"SÜRE {time.monotonic() - t:6.1f} sn  {tool.id}/{action.id}")
     assert not [e for e in report.errors if e.startswith("Beklenmeyen hata")]
     from test_live import skip_if_outage
     skip_if_outage(report)

@@ -67,7 +67,13 @@ def suggest(raw: str) -> list[Suggestion]:
         add("virustotal", "ip", "ip", text, "VirusTotal")
         return out
 
+    # Şüpheli link/SMS: önce ve her zaman PASİF analiz (link açılmaz). Linki açan araçlar sonra gelir.
+    if " " in text and re.search(r"(?i)https?://|www\.|\b[a-z0-9-]+\.(?:com|xyz|top|click|link|ly|info|net|org)\b",
+                                 text):
+        add("linkcheck", "analyze", "text", text, "Mesajdaki linkleri açmadan incele")
+        return out
     if re.match(r"https?://", text, re.I):
+        add("linkcheck", "analyze", "text", text, "Linki açmadan incele (önerilen)")
         from ..modules.web import parse_url
         try:
             url = parse_url(text)

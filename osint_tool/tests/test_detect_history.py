@@ -30,8 +30,10 @@ from pwrosint.core.registry import get_tool
     ("bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", "crypto", "btc"),
     ("0xde0b295669a9fd93d5f28d9ec85e40f4cb697bae", "crypto", "eth"),
     ("AS9121", "asn", "lookup"),
-    ("https://ornek.com/foto.JPG", "image", "analyze"),
-    ("https://ornek.com/hakkimizda", "site", "analyze"),
+    ("https://ornek.com/foto.JPG", "linkcheck", "analyze"),       # URL: önce pasif analiz
+    ("https://ornek.com/hakkimizda", "linkcheck", "analyze"),
+    ("Kargonuz bekliyor https://ptt-kargo.xyz/a", "linkcheck", "analyze"),
+    ("Iadeniz hazir: bit.ly/abc123 tikla", "linkcheck", "analyze"),
 ])
 def test_suggest_first_choice(text, tool, action):
     s = suggest(text)
@@ -60,8 +62,15 @@ def test_history_dedupes_and_skips_passwords(tmp_path):
 def test_every_suggestion_points_to_real_field():
     samples = ["ali@ornek.com", "8.8.8.8", "github.com", "torvalds", "https://ornek.com/a.png",
                "AS15169", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", "Ahmet Yılmaz", "CVE-2021-44228",
-               "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc", "192.168.1.0/24", "5f4dcc3b5aa765d61d8327deb882cf99"]
+               "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc", "192.168.1.0/24", "5f4dcc3b5aa765d61d8327deb882cf99",
+               "Kargonuz bekliyor https://ptt-kargo.xyz/a"]
     for text in samples:
         for s in suggest(text):
             action = get_tool(s.tool).action(s.action)
             assert s.field in {f.name for f in action.fields}, (text, s)
+
+
+def test_url_never_suggests_opening_first():
+    """Şüpheli URL yapıştırınca ilk öneri sayfayı telefondan açan bir araç olmamalı."""
+    for text in ("https://ptt-kargo-takip.xyz/odeme", "http://203.0.113.5/giris", "https://bit.ly/abc"):
+        assert suggest(text)[0].tool == "linkcheck", text

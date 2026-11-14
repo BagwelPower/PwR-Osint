@@ -562,7 +562,7 @@ def _openphish(ctx: Context, rep: Report, v: dict) -> None:
 
 
 register(Tool("phishing", "Oltalama & Taklit", "Benzer kayıtlı domainler, OpenPhish", "PHISHING",
-              "Tehdit İstihbaratı", [
+              "Dolandırıcılık & Oltalama", [
                   Action("typosquat", "Taklit domainler", (DOMAIN,), _typosquat),
                   Action("openphish", "OpenPhish", (DOMAIN,), _openphish)]))
 register(Tool("blacklist", "Kara Liste", "IP'nin 10 spam/DNSBL listesindeki durumu", "BLOCK",

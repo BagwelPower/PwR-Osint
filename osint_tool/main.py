@@ -63,6 +63,26 @@ def text_field(label: str, **kw) -> ft.TextField:
 PIVOT_TOOLS = {"email", "host", "crypto", "virustotal", "asn"}
 
 
+def _fold(text: str) -> str:
+    """Türkçe duyarlı küçük harf + aksan sadeleştirme (arama için)."""
+    t = text.replace("I", "ı").replace("İ", "i").lower()
+    return t.translate(str.maketrans("çğıöşü", "cgiosu"))
+
+
+def find_tools(query: str, tools) -> list:
+    """Araç adı, alt başlığı, kategorisi ve açıklamasında arama; ada uyanlar önce."""
+    q = _fold(query.strip())
+    if len(q) < 2:
+        return []
+    words = q.split()
+    scored = []
+    for t in tools:
+        title, rest = _fold(t.title), _fold(f"{t.subtitle} {t.category} {t.description}")
+        if all(w in title or w in rest for w in words):
+            scored.append((0 if all(w in title for w in words) else 1, t.title, t))
+    return [t for _, _, t in sorted(scored, key=lambda x: (x[0], x[1]))]
+
+
 def pivot_target(it: Item, current_target: str = ""):
     """Bir sonuç satırının başka bir araçla araştırılabilir değeri varsa öneriyi döndürür.
     Link satırları (Dış araçlar, profil adresleri) pivotlanmaz; yalnızca düz değerler."""
@@ -177,9 +197,14 @@ class App:
         suggestions = ft.Column(spacing=6, visible=False)
 
         def on_search(e):
-            items = suggest(e.control.value or "")
-            suggestions.controls = [self.suggestion_tile(s) for s in items[:8]]
-            suggestions.visible = bool(items)
+            text = e.control.value or ""
+            items = suggest(text)
+            controls = [self.suggestion_tile(s) for s in items[:8]]
+            # Tanınan bir tür değilse (ya da ek olarak) araç adı/açıklamasıyla eşleşen araçlar
+            shown = {s.tool for s in items}
+            controls += [self.tool_match_tile(t) for t in find_tools(text, self.tools) if t.id not in shown][:6]
+            suggestions.controls = controls
+            suggestions.visible = bool(controls)
             self.page.update()
 
         search = text_field(
@@ -265,6 +290,18 @@ class App:
                 ]),
                 ft.Icon(ft.Icons.ARROW_FORWARD, size=16, color=MUTED),
             ]))
+
+    def tool_match_tile(self, tool: Tool) -> ft.Control:
+        return ft.Container(
+            bgcolor=SURFACE, border_radius=12, ink=True, on_click=lambda e, t=tool.id: self.go(f"/tool/{t}"),
+            padding=ft.Padding.symmetric(horizontal=12, vertical=10),
+            content=ft.Row(spacing=12, controls=[
+                ft.Icon(icon(tool.icon), color=MUTED, size=20),
+                ft.Column(spacing=0, expand=True, controls=[
+                    ft.Text(tool.title, weight=ft.FontWeight.BOLD, size=13),
+                    ft.Text(f"{tool.category} · {tool.subtitle}", size=11, color=MUTED, max_lines=1,
+                            overflow=ft.TextOverflow.ELLIPSIS)]),
+                ft.Icon(ft.Icons.CHEVRON_RIGHT, size=16, color=MUTED)]))
 
     def history_chip(self, h) -> ft.Control:
         try:
@@ -408,8 +445,9 @@ class ToolScreen:
                 self.inputs[f.name] = tf
                 self.fields_col.controls.append(tf)
                 self.fields_col.controls.append(ft.OutlinedButton(
-                    "Fotoğraf seç", icon=ft.Icons.PHOTO_LIBRARY,
-                    on_click=lambda e, t=tf: self.page.run_task(self.pick_image, t)))
+                    "Fotoğraf seç" if f.accept else "Dosya seç",
+                    icon=ft.Icons.PHOTO_LIBRARY if f.accept else ft.Icons.ATTACH_FILE,
+                    on_click=lambda e, t=tf, fld=f: self.page.run_task(self.pick_file, t, fld)))
                 continue
             multiline = f.kind == "multiline"
             tf = text_field(
@@ -442,14 +480,18 @@ class ToolScreen:
             self.key_banner.content = None
         self.key_banner.visible = self.key_banner.content is not None
 
-    async def pick_image(self, target: ft.TextField) -> None:
+    async def pick_file(self, target: ft.TextField, field) -> None:
         # Not: Android'in "Fotoğraf Seçici"si (IMAGE türü) GPS bilgisini siler; belge seçici
-        # (CUSTOM + uzantı listesi) orijinal dosyayı verir.
+        # (CUSTOM + uzantı listesi ya da ANY) orijinal dosyayı verir.
         try:
-            files = await self.app.file_picker.pick_files(
-                dialog_title="Analiz edilecek fotoğraf", file_type=ft.FilePickerFileType.CUSTOM,
-                allowed_extensions=["jpg", "jpeg", "png", "heic", "heif", "webp", "gif", "tif", "tiff"],
-                with_data=self.page.web)
+            if field.accept:
+                files = await self.app.file_picker.pick_files(
+                    dialog_title="Analiz edilecek fotoğraf", file_type=ft.FilePickerFileType.CUSTOM,
+                    allowed_extensions=list(field.accept), with_data=self.page.web)
+            else:
+                files = await self.app.file_picker.pick_files(
+                    dialog_title="Analiz edilecek dosya", file_type=ft.FilePickerFileType.ANY,
+                    with_data=self.page.web)
         except Exception as ex:
             self.app.toast(f"Dosya seçilemedi: {ex}")
             return
@@ -774,7 +816,7 @@ class ToolScreen:
 # ---------------------------------------------------------------- tanılama
 
 # Tanılamada atlananlar: derin tarama çok uzun; dosya seçimi kullanıcı etkileşimi ister.
-DIAG_SKIP = {("username", "deep"), ("image", "file"), ("fullscan", "scan"),
+DIAG_SKIP = {("username", "deep"), ("image", "file"), ("filescan", "analyze"), ("fullscan", "scan"),
              # Globalping ücretsiz ölçüm kotası kullanır; tanılamada harcanmasın
              ("globalping", "ping"), ("globalping", "traceroute"), ("globalping", "mtr"), ("globalping", "http"),
              # Aktif araçlar tanılamada kendiliğinden çalışmaz (onay ister, veri harcar ya da ağa bağlantı açar)

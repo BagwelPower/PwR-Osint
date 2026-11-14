@@ -120,6 +120,26 @@ TOOL_DOCS: dict[str, tuple[str, tuple[str, ...], str]] = {
         "ölçer; harcanan veri miktarını gösterir.",
         ("speed.cloudflare.com",),
         "Mobil veride veri harcar (indirme varsayılanı ≈ 16 MB). Sonuç en yakın Cloudflare sunucusuna göredir."),
+    "linkcheck": (
+        "SMS ya da mesajdaki şüpheli linkleri AÇMADAN inceler: kısaltıcı, IP adresli link, '@' hilesi, punycode ve "
+        "karışık alfabe (homograf), riskli uzantı, tuzak kelimeler, marka taklidi (bankalar, e-Devlet, PTT, kargo), "
+        "domain yaşı, OpenPhish ve urlscan geçmişi; risk değerlendirmesi ve ne yapılması gerektiği. İsteğe bağlı "
+        "olarak kısaltılmış linkin yönlendirmelerini yalnızca HEAD istekleriyle takip eder.",
+        ("DNS", "RDAP", "OpenPhish", "urlscan.io"),
+        "Analiz hiçbir zaman 'güvenli' demez. Bağlantı takibi linkin ilk sunucusuna istek gönderir (onay ister). "
+        ".tr domainlerinde kayıt tarihi bilinmez."),
+    "iban": (
+        "IBAN'ın MOD-97 sağlama toplamını, ülkeye göre uzunluğunu ve Türk IBAN yapısını (banka kodu, rezerv hane, "
+        "hesap numarası) çevrimdışı doğrular; büyük bankaların adını gösterir.",
+        ("Yalnızca cihazda (çevrimdışı)",),
+        "IBAN geçerliliği hesap sahibini göstermez. Banka adı listesi yalnızca büyük bankaları kapsar; diğer kodlar "
+        "için TCMB EFT listesine bakın. IBAN kaydedilmez."),
+    "filescan": (
+        "Şüpheli bir dosyayı çalıştırmadan inceler: içeriğe göre gerçek tür ve yanıltıcı/çift uzantı, hash'ler, "
+        "entropi, gömülü URL/IP/e-postalar; PDF'te JavaScript ve otomatik eylemler, Office'te VBA makrosu ve "
+        "dışarıdan şablon yükleme, APK'da tehlikeli izinler ve bankacılık truvası kalıbı, EXE'de paketleyici izi.",
+        ("Yalnızca cihazda (çevrimdışı)",),
+        "Statik analizdir; zararlı yazılımı kesin olarak dışlayamaz. Dosya hiçbir yere gönderilmez."),
     "dns": (
         "A, AAAA, CNAME, MX, NS, TXT, SOA, CAA kayıtlarını sorgular; SPF, DMARC ve CAA politikalarını "
         "değerlendirip domainin hangi servisleri kullandığını doğrulama kayıtlarından çıkarır.",

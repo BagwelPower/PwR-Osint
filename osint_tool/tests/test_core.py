@@ -182,3 +182,13 @@ def test_highlights_show_variety():
     assert "TLS · Sertifika" in titles and "Altyapı · Açık portlar" in titles
     assert any(i.label == "+17 benzer bulgu" for _, i in hl)
     assert len(hl) <= 8
+
+
+def test_find_tools_by_name_and_description():
+    import main
+    tools = all_tools()
+    assert main.find_tools("port", tools)[0].id == "portscan"
+    assert main.find_tools("ŞİFRE", tools)[0].id == "password"  # Türkçe büyük harf
+    assert main.find_tools("sifre", tools)[0].id == "password"  # aksansız yazım
+    assert any(t.id == "cve" for t in main.find_tools("zafiyet", tools))  # açıklamada geçiyor
+    assert main.find_tools("x", tools) == []

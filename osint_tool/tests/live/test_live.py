@@ -346,3 +346,41 @@ def test_portscan_localhost_listener():
         srv.close()
     assert not r.errors
     assert "pwr-test" in section(r, "Açık portlar")["8081/tcp"].value
+
+
+# ---------------------------------------------------------------- telefondaki DNS engelinin benzetimi
+
+# Kullanıcının telefonunda cloudflare-dns.com ve dns.google'a ulaşılamıyordu; o ağda E-posta 39.6 sn,
+# Permutator 38.1 sn, Subdomain 85 sn, Kara Liste 67 sn sürmüş ve bazı araçlar hata vermişti.
+BLOCKED_DOH_BUDGETS = [
+    ("email", "analyze", {"email": "test@gmail.com"}, 20),
+    ("email", "permutate", {"first": "Ahmet", "last": "Yılmaz", "domain": "github.com"}, 10),
+    ("blacklist", "check", {"ip": "8.8.8.8"}, 30),
+    ("subdomain", "enumerate", {"domain": "example.com"}, 75),
+    ("dns", "records", {"domain": "github.com"}, 15),
+    ("host", "profile", {"target": "github.com"}, 30),
+]
+
+
+@pytest.mark.parametrize("tool_id, action_id, raw, budget", BLOCKED_DOH_BUDGETS,
+                         ids=[f"{t}-{a}" for t, a, _, _ in BLOCKED_DOH_BUDGETS])
+def test_works_when_hostname_doh_is_blocked(tool_id, action_id, raw, budget):
+    import time
+    from pwrosint.core import dns
+    from pwrosint.core.registry import parse_inputs
+    dns.reset_health()
+    with dns._lock:  # telefondaki durum: ad ile DoH sunucularına ulaşılamıyor
+        for name in ("Cloudflare DoH", "Google DoH"):
+            dns._dead_until[name] = time.monotonic() + 3600
+    tool = get_tool(tool_id)
+    action = tool.action(action_id)
+    t = time.monotonic()
+    report = run_action(Context(Settings(timeout=20)), tool, action, parse_inputs(action, raw))
+    took = time.monotonic() - t
+    print(report.to_text())
+    print(f"süre: {took:.1f} sn · DNS yolu: {dns.active_transport()}")
+    skip_if_outage(report)
+    assert not report.errors, report.errors
+    assert dns.active_transport() not in ("Cloudflare DoH", "Google DoH")
+    assert took < budget, f"{tool_id}/{action_id} {took:.1f} sn sürdü (bütçe {budget} sn)"
+    dns.reset_health()

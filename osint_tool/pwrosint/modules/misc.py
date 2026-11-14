@@ -232,12 +232,12 @@ def _vin(ctx: Context, rep: Report, v: dict) -> None:
 
 # ---------------------------------------------------------------- kayıt
 
-register(Tool("geo", "Konum", "Koordinat → adres, BSSID → üretici/konum", "TRAVEL_EXPLORE", "Diğer", [
+register(Tool("geo", "Konum", "Koordinat → adres, BSSID → üretici/konum", "TRAVEL_EXPLORE", "Konum & Araç", [
     Action("coords", "Koordinat", (Field("coords", "Koordinat (enlem, boylam)", "41.0082, 28.9784",
                                          parse=validate.coordinates),), _coords),
     Action("bssid", "BSSID / MAC", (Field("mac", "BSSID / MAC", "00:11:22:33:44:55", parse=validate.mac),),
            _bssid)]))
-register(Tool("vehicle", "Araç", "Plaka (TR) ve VIN / şasi no", "DIRECTIONS_CAR", "Diğer", [
+register(Tool("vehicle", "Araç", "Plaka (TR) ve VIN / şasi no", "DIRECTIONS_CAR", "Konum & Araç", [
     Action("vin", "VIN", (Field("vin", "VIN / şasi no (17 karakter)", "1HGCM82633A004352", parse=parse_vin),),
            _vin),
     Action("plate", "Plaka", (Field("plate", "Plaka", "34 ABC 123", parse=parse_plate),), _plate)]))

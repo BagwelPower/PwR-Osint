@@ -79,6 +79,10 @@ SAMPLES.update({
     ("lan", "scan"): {},
     ("speedtest", "download"): {"mb": "5"},
     ("speedtest", "upload"): {},
+    ("linkcheck", "analyze"): {"text": "Kargonuz teslim edilemedi, adresinizi guncelleyin: https://ptt-kargo-takip.xyz/tr"},
+    ("linkcheck", "expand"): {"text": "https://bit.ly/3xyzTest"},
+    ("iban", "check"): {"iban": "TR33 0006 1005 1978 6457 8413 26"},
+    ("filescan", "analyze"): {"file": ""},  # testler örnek dosya üretip yolunu buraya yazar
 })
 
 # Bu işlemler API anahtarı ister; anahtar yoksa "anahtar gerekli" mesajı beklenen davranıştır.

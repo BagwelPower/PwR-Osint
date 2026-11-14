@@ -67,6 +67,9 @@ def sample_image_file(tmp_path_factory):
     path = tmp_path_factory.mktemp("img") / "foto.jpg"
     path.write_bytes(build_jpeg_with_exif())
     SAMPLES[("image", "file")]["file"] = str(path)
+    doc = tmp_path_factory.mktemp("doc") / "belge.pdf"
+    doc.write_bytes(b"%PDF-1.7\n1 0 obj << /OpenAction 2 0 R >> endobj\n%%EOF")
+    SAMPLES[("filescan", "analyze")]["file"] = str(doc)
     return path
 
 

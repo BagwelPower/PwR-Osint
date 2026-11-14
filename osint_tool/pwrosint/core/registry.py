@@ -24,6 +24,8 @@ class Field:
     # Hassas alan: değeri geçmişe, rapor başlığına, kayıtlı raporlara ve dışa aktarmaya yazılmaz
     # (JWT, e-posta başlığı, şifre gibi). "password" türü her zaman hassastır.
     sensitive: bool = False
+    # Dosya alanı için seçilebilecek uzantılar (boş: her tür dosya)
+    accept: tuple[str, ...] = ()
 
     @property
     def is_sensitive(self) -> bool:
@@ -66,13 +68,13 @@ CATEGORY_INFO = {
     "Sosyal Medya": "Platform hesaplarının ayrıntılı analizi: aktivite, bağlantılar, sızan bilgiler.",
     "Ağ & Domain": "Domain ve IP altyapısı: WHOIS, DNS, sertifika, alt alan adları, ağ sahibi.",
     "Web": "Web sitelerinin teknolojisi, iletişim bilgileri, gizli yolları ve geçmiş taramaları.",
-    "Tehdit İstihbaratı": "Sızıntılar, zararlı itibarı, oltalama domainleri ve kara listeler.",
-    "Güvenlik Analizi": "Zafiyet (CVE) araştırması ve şüpheli e-postaların adli incelemesi.",
+    "Tehdit İstihbaratı": "Sızıntılar, zafiyetler (CVE), zararlı itibarı ve kara listeler.",
+    "Dolandırıcılık & Oltalama": "Şüpheli SMS/linkler, sahte e-postalar, taklit domainler ve IBAN kontrolü.",
     "Ağ Araçları": "Sistem ve ağ yöneticisinin saha araçları: bağlantı, port, yerel ağ, ping, HTTP, hız.",
+    "Dosya & Görsel": "Şüpheli dosyaların (PDF, Office, APK…) ve fotoğrafların gizli içeriği.",
     "Kripto": "Kripto para adreslerinin bakiye ve işlem geçmişi.",
-    "Görsel & Dosya": "Fotoğraflardaki gizli meta veriler (cihaz, tarih, GPS) ve tersine arama.",
     "Araç Kutusu": "Günlük işler için çevrimdışı araçlar: subnet, JWT, hash, kodlama, şifre, zaman.",
-    "Diğer": "Konum, Wi-Fi/MAC ve araç (VIN, plaka) sorguları.",
+    "Konum & Araç": "Koordinat, Wi-Fi/MAC ve araç (VIN, plaka) sorguları.",
 }
 CATEGORIES = list(CATEGORY_INFO)
 

@@ -190,7 +190,7 @@ def _email_header(ctx: Context, rep: Report, v: dict) -> None:
 # ---------------------------------------------------------------- kayıt
 
 register(Tool("emailheader", "E-posta Başlık Analizi", "Oltalama incelemesi: SPF/DKIM/DMARC, yol, kaynak IP",
-              "MARK_EMAIL_UNREAD", "Güvenlik Analizi", [
+              "MARK_EMAIL_UNREAD", "Dolandırıcılık & Oltalama", [
                   Action("analyze", "İncele", (Field("headers", "E-posta başlıkları",
                                                      "Received: from … (Gmail: ⋮ → Orijinali göster)", "multiline",
                                                      parse_headers, sensitive=True),), _email_header)]))
@@ -459,7 +459,7 @@ def _cve_search(ctx: Context, rep: Report, v: dict) -> None:
 
 
 register(Tool("cve", "CVE Sorgusu", "CVSS, aktif istismar (CISA KEV), EPSS, etkilenen ürünler", "BUG_REPORT",
-              "Güvenlik Analizi", [
+              "Tehdit İstihbaratı", [
                   Action("lookup", "CVE numarası", (Field("cve", "CVE", "CVE-2021-44228", parse=cve_id),), _cve),
                   Action("search", "Ürün / anahtar kelime",
                          (Field("query", "Ürün veya anahtar kelime", "fortinet ssl vpn", parse=_keyword),),
