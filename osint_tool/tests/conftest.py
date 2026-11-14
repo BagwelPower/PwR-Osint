@@ -90,6 +90,7 @@ def offline_dns(request, monkeypatch):
     dns.reset_health()
     from pwrosint.modules import nettools, security
     monkeypatch.setattr(security, "NVD_RETRY_DELAY", 0)
+    monkeypatch.setattr(nettools, "GLOBALPING_RETRY_DELAY", 0)
     # Ham soket açan yardımcılar birim testlerinde ağa çıkmasın.
     monkeypatch.setattr(nettools, "local_ip", lambda: "192.168.1.23")
     monkeypatch.setattr(nettools, "tcp_rtt", lambda *a, **k: None)

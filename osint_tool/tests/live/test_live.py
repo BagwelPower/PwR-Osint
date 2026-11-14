@@ -13,7 +13,7 @@ from pwrosint.core.report import Level
 from pwrosint.core.runner import run_action
 
 OUTAGE = ("bağlantı kurulamadı", "zaman aşımı", "HTTP 502", "HTTP 503", "HTTP 504", "şu anda yoğun",
-          "istek limiti", "limiti doldu")
+          "istek limiti", "limiti doldu", "sunucu hatası")
 
 
 def skip_if_outage(report):

@@ -185,6 +185,7 @@ def http_url(value: str) -> str:
 # ---------------------------------------------------------------- Globalping
 
 GLOBALPING = "https://api.globalping.io/v1/measurements"
+GLOBALPING_RETRY_DELAY = 3  # sn (testlerde 0)
 
 
 def _location(value: str) -> str:
@@ -199,6 +200,11 @@ def _measure(ctx: Context, rep: Report, mtype: str, target: str, location: Optio
     if options:
         body["measurementOptions"] = options
     resp = ctx.http.post(GLOBALPING, json=body, timeout=max(20, ctx.settings.timeout))
+    if resp.status_code >= 500:  # geçici sunucu hatası: kısa bekleyip bir kez daha
+        ctx.cancel_event.wait(GLOBALPING_RETRY_DELAY)
+        resp = ctx.http.post(GLOBALPING, json=body, timeout=max(20, ctx.settings.timeout))
+        if resp.status_code >= 500:
+            raise OsintError(f"Globalping sunucu hatası (HTTP {resp.status_code}); biraz sonra tekrar deneyin")
     if resp.status_code == 429:
         raise OsintError("Globalping: saatlik ücretsiz ölçüm limiti doldu, daha sonra deneyin")
     if resp.status_code == 422:

@@ -158,3 +158,9 @@ def test_nvd_busy_message(ctx, http):
     http.add(security.NVD, "Service Unavailable", status=503)
     report = run(ctx, "cve", "search", query="log4j")
     assert "NVD şu anda yoğun" in report.errors[0]
+
+
+def test_globalping_server_error_is_retried_then_explained(ctx, http):
+    http.add(nettools.GLOBALPING, {"error": "x"}, status=500)
+    report = run(ctx, "globalping", "ping", target="github.com", location=None)
+    assert len(http.posted) == 2 and "sunucu hatası" in report.errors[0]
