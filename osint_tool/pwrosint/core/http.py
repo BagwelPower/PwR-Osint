@@ -58,7 +58,10 @@ class Http:
         yanıtın gövdesi boşsa ``None`` döner."""
         resp = self.get(url, **kw)
         if resp.status_code not in ok:
-            raise OsintError(f"{_host(url)}: HTTP {resp.status_code}{_hint(resp.status_code)}")
+            detail = ""
+            if resp.status_code in (400, 422):  # istek reddedildi: sunucunun açıklaması tanıya yardımcı olur
+                detail = " — " + " ".join(resp.text.split())[:120] if resp.text else ""
+            raise OsintError(f"{_host(url)}: HTTP {resp.status_code}{_hint(resp.status_code)}{detail}")
         if resp.status_code == 204 or not resp.content:
             return None
         return parse_json(resp, expect)

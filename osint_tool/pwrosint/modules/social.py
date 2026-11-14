@@ -136,8 +136,23 @@ def _reddit_json(ctx: Context, path: str, **params):
 
 
 def _arctic(ctx: Context, kind: str, user: str, sort: str = "desc", limit: int = 100) -> list[dict]:
-    data = ctx.http.json(f"{ARCTIC}/{kind}/search", params={"author": user, "limit": limit, "sort": sort},
-                         timeout=max(20, ctx.settings.timeout))
+    # Arctic Shift API'si zaman zaman parametre kurallarını değiştiriyor (ör. HTTP 422); reddedilirse
+    # daha sade parametrelerle tekrar dener.
+    variants = [{"author": user, "limit": limit, "sort": sort},
+                {"author": user, "limit": min(limit, 25), "sort": sort},
+                {"author": user, "limit": min(limit, 25)}]
+    last: OsintError | None = None
+    data = None
+    for params in variants:
+        try:
+            data = ctx.http.json(f"{ARCTIC}/{kind}/search", params=params, timeout=max(20, ctx.settings.timeout))
+            break
+        except OsintError as e:
+            last = e
+            if "HTTP 4" not in str(e):
+                raise
+    else:
+        raise last  # type: ignore[misc]
     return [x for x in (data or {}).get("data") or [] if isinstance(x, dict) and x.get("created_utc")]
 
 

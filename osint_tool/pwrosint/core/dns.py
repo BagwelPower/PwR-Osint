@@ -6,7 +6,7 @@ zincirinden geçer ve ilk yanıt veren kullanılır:
 
 1. JSON DoH, sunucu adıyla       (cloudflare-dns.com, dns.google)
 2. JSON DoH, IP adresiyle         (1.1.1.1, 8.8.8.8) — ad çözümlemesi engellense de çalışır
-3. RFC 8484 DoH (DNS paket biçimi) (9.9.9.9, dns.quad9.net, 1.0.0.1)
+3. RFC 8484 DoH (DNS paket biçimi) (1.0.0.1, 8.8.4.4, AdGuard)
 4. Klasik DNS, UDP/TCP 53          (1.1.1.1, 8.8.8.8, 9.9.9.9)
 5. Sistem çözümleyicisi            (yalnızca A/AAAA)
 
@@ -211,9 +211,10 @@ TRANSPORTS: list[tuple[str, Callable[[Context, str, str], Answer]]] = [
     ("Google DoH", _json_doh("https://dns.google/resolve")),
     ("Cloudflare DoH (IP)", _json_doh("https://1.1.1.1/dns-query")),
     ("Google DoH (IP)", _json_doh("https://8.8.8.8/resolve")),
-    ("Quad9 DoH (IP)", _wire_doh("https://9.9.9.9/dns-query")),
-    ("Quad9 DoH", _wire_doh("https://dns.quad9.net/dns-query")),
+    # RFC 8484 (paket biçimi). Not: Quad9 DoH yalnızca HTTP/2 kabul ediyor (HTTP 505), kullanılmıyor.
     ("Cloudflare DoH (1.0.0.1)", _wire_doh("https://1.0.0.1/dns-query")),
+    ("Google DoH (8.8.4.4)", _wire_doh("https://8.8.4.4/dns-query")),
+    ("AdGuard DoH", _wire_doh("https://dns.adguard-dns.com/dns-query")),
     ("DNS 1.1.1.1:53", _udp("1.1.1.1")),
     ("DNS 8.8.8.8:53", _udp("8.8.8.8")),
     ("DNS 9.9.9.9:53", _udp("9.9.9.9")),
