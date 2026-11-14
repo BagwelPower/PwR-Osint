@@ -231,3 +231,24 @@ def test_fullscan_real_domain():
     assert not r.errors
     prefixes = {s.title.split(" · ")[0] for s in r.sections}
     assert {"Altyapı", "DNS", "TLS", "Subdomain", "Site", "Arşiv", "Taklit"} <= prefixes, prefixes
+
+
+# ---------------------------------------------------------------- DNS taşıyıcıları (her biri ayrı)
+
+from pwrosint.core import dns as _dns  # noqa: E402
+
+
+@pytest.mark.parametrize("name, transport", _dns.TRANSPORTS, ids=[n for n, _ in _dns.TRANSPORTS])
+def test_dns_transport(name, transport):
+    from pwrosint.core.config import Settings
+    from pwrosint.core.context import Context
+    ctx = Context(Settings(timeout=10))
+    status, answers = transport(ctx, "github.com", "A")
+    assert status == "NOERROR" and answers, (name, status, answers)
+    if name != "Sistem çözümleyicisi":
+        status, mx = transport(ctx, "gmail.com", "MX")
+        assert any("google" in m.lower() for m in mx), (name, mx)
+        status, txt = transport(ctx, "gmail.com", "TXT")
+        assert any("v=spf1" in t for t in txt), (name, txt)
+        status, _ = transport(ctx, "bu-domain-kesinlikle-yok-pwr-12345.com", "A")
+        assert status == "NXDOMAIN", (name, status)

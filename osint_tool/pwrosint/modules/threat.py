@@ -455,9 +455,17 @@ def _typosquat(ctx: Context, rep: Report, v: dict) -> None:
             ns = [] if a else dns.resolve(ctx, cand, "NS")
             return cand, kind, (a or ns or ["kayıtlı"]), mx
         except OsintError:
-            return cand, kind, None, []
+            return cand, kind, False, []  # False: sorgulanamadı (None: kayıtsız)
 
+    # DNS çalışıyor mu? Önce tek sorgu: ağ DNS'i engelliyorsa yüzlerce zaman aşımı beklemeyelim.
+    dns.query(ctx, domain, "NS")
     results = ctx.parallel(check, cands.items())
+    failed = sum(1 for r in results if r[2] is False)
+    if failed > len(results) // 2:
+        raise OsintError(f"{failed}/{len(results)} varyasyon sorgulanamadı (DNS yanıt vermedi); sonuçlar "
+                         "güvenilir olmadığı için gösterilmiyor. Biraz sonra tekrar deneyin.")
+    if failed:
+        rep.notice(f"{failed} varyasyon sorgulanamadı; bunlar kayıtsız sayılmadı, listede yok.")
     live = [(c, k, a, mx) for c, k, a, mx in results if a]
     sec = rep.section(f"Kayıtlı benzer domainler ({len(live)})",
                       note="Kırmızı: e-posta alabiliyor (MX) — oltalama e-postası için kullanılabilir.")
@@ -517,8 +525,12 @@ def _blacklist(ctx: Context, rep: Report, v: dict) -> None:
             sec.add(name, "Temiz", level=Level.OK)
         else:
             rep.source(name, False, detail.split(": ", 1)[-1])
+    checked = [r for r in results if r[1] in ("listed", "clean")]
+    if not checked:
+        raise OsintError("Hiçbir kara listeye sorgu yapılamadı (DNS yanıt vermedi); IP'nin temiz olduğu "
+                         "söylenemez. Farklı bir ağda tekrar deneyin.")
     rep.summary = (f"{len(listed)} kara listede bulundu — bu IP'den gelen e-postalar engellenebilir."
-                   if listed else "Kontrol edilen listelerin hiçbirinde yok.")
+                   if listed else f"Sorgulanabilen {len(checked)}/{len(results)} listenin hiçbirinde yok.")
     links = rep.section("Dış araçlar")
     links.link("MXToolbox", f"https://mxtoolbox.com/SuperTool.aspx?action=blacklist%3a{ip}")
     links.link("AbuseIPDB", f"https://www.abuseipdb.com/check/{ip}")

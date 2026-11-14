@@ -504,15 +504,34 @@ def _subdomains(ctx: Context, rep: Report, v: dict) -> None:
 
     limit = 300
     names = sorted(found)
-    resolved = ctx.parallel(lambda n: (n, _safe_query(ctx, n, "A")[1]), names[:limit])
+    try:
+        dns.query(ctx, domain, "NS")  # DNS çalışmıyorsa 300 zaman aşımı beklemeyelim
+        dns_ok = True
+    except OsintError as e:
+        rep.source("Canlılık kontrolü (DNS)", False, str(e).split(": ", 1)[-1][:80])
+        dns_ok = False
+    if not dns_ok:
+        sec = rep.section(f"Bulunan subdomain'ler ({len(names)})",
+                          note="DNS'e ulaşılamadığı için hangilerinin aktif olduğu kontrol edilemedi.")
+        for name in names:
+            sec.add(name, url=f"https://{name}")
+        rep.summary = f"{len(found)} benzersiz subdomain bulundu (canlılık kontrol edilemedi)."
+        return
+
+    resolved = ctx.parallel(lambda n: (n, *_safe_query(ctx, n, "A")), names[:limit])
     live = rep.section("Aktif (IP'ye çözülen)")
     dead = rep.section("Çözülmeyen", note="Eski veya iç ağ kayıtları olabilir.")
-    for name, ips in resolved:
+    unknown = rep.section("Kontrol edilemedi", note="DNS bu adlar için yanıt vermedi.")
+    for name, status, ips in resolved:
         ips = [i for i in ips if validate.is_ip(i)]
         if ips:
             live.add(name, ", ".join(ips[:3]), url=f"https://{name}", level=Level.OK)
-        else:
+        elif status in ("NOERROR", "NXDOMAIN"):
             dead.add(name, level=Level.MUTED)
+        else:
+            unknown.add(name, level=Level.MUTED)
+    if not unknown.items:
+        rep.sections.remove(unknown)
     if len(names) > limit:
         extra = rep.section(f"Çözümlenmedi (limit {limit})")
         for name in names[limit:]:

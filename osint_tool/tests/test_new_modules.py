@@ -3,6 +3,7 @@ from collections import Counter
 
 import pytest
 
+from pwrosint.core.errors import OsintError
 from pwrosint.core.report import Level
 from pwrosint.modules import crypto, media, network, social, threat, web
 
@@ -398,3 +399,26 @@ def test_local_image_validation(tmp_path):
     txt.write_text("merhaba")
     with pytest.raises(ValueError):
         media.local_image(str(txt))
+
+
+def test_blacklist_never_claims_clean_when_nothing_was_checked(ctx, http):
+    http.add("https://", OsintError("dns engelli"))
+    report = run(ctx, "blacklist", ip="1.2.3.4")
+    assert report.errors and "temiz olduğu söylenemez" in report.errors[0]
+    assert not any("hiçbirinde yok" in (report.summary or "") for _ in [0])
+
+
+def test_typosquat_refuses_unreliable_results(ctx, http, monkeypatch):
+    from pwrosint.core import dns as dnsmod
+    real = dnsmod.query
+    calls = {"n": 0}
+
+    def flaky(ctx_, name, rtype):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return "NOERROR", ["ns.ornek.com."]  # ilk kontrol geçer, sonra DNS çöker
+        raise OsintError("zaman aşımı")
+    monkeypatch.setattr(dnsmod, "query", flaky)
+    report = run(ctx, "phishing", "typosquat", domain="ornek.com")
+    assert report.errors and "güvenilir olmadığı" in report.errors[0]
+    monkeypatch.setattr(dnsmod, "query", real)

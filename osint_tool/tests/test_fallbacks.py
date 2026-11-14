@@ -211,3 +211,26 @@ def test_wayback_listing_timeout_keeps_summary(ctx, http):
     assert not report.errors
     assert items(report, "Arşiv özeti")["İlk kayıt"].value.startswith("2002-01-01")
     assert any("sayfa listesini" in n for n in report.notices)
+
+
+def test_subdomains_without_dns_are_not_reported_dead(ctx, http):
+    from pwrosint.core.errors import OsintError
+    http.add("https://cloudflare-dns.com/", OsintError("engelli"))
+    http.add("https://dns.google/", OsintError("engelli"))
+    http.add("https://1.1.1.1/", OsintError("engelli"))
+    http.add("https://8.8.8.8/", OsintError("engelli"))
+    http.add("https://9.9.9.9/", OsintError("engelli"))
+    http.add("https://dns.quad9.net/", OsintError("engelli"))
+    http.add("https://1.0.0.1/", OsintError("engelli"))
+    http.add("https://crt.sh/", [{"name_value": "www.ornek.com\napi.ornek.com"}])
+    for src in ("https://api.certspotter.com/", "https://jldc.me/"):
+        http.add(src, [])
+    http.add("https://api.hackertarget.com/", "error")
+    http.add("https://otx.alienvault.com/", {"passive_dns": []})
+    http.add("https://urlscan.io/", {"results": []})
+    http.add("https://web.archive.org/", [])
+    report = run(ctx, "subdomain", domain="ornek.com")
+    assert not report.errors
+    assert set(items(report, "Bulunan subdomain")) == {"www.ornek.com", "api.ornek.com"}
+    assert not any(s.title == "Çözülmeyen" for s in report.sections)
+    assert "canlılık kontrol edilemedi" in report.summary

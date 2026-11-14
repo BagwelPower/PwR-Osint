@@ -20,6 +20,17 @@ class Context:
         self.settings = settings
         self.http = http or Http(settings.user_agent, settings.timeout)
         self.cancel_event = threading.Event()
+        self._fast_http: Http | None = None
+
+    @property
+    def fast_http(self) -> Http:
+        """Yeniden denemesiz, kısa zaman aşımlı oturum: çok sayıda küçük istek (DNS, site
+        taraması) için. Testlerde sahte bir Http verilmişse onu kullanır."""
+        if type(self.http) is not Http:
+            return self.http
+        if self._fast_http is None:
+            self._fast_http = Http(self.settings.user_agent, min(self.settings.timeout, 6), retries=0)
+        return self._fast_http
 
     def check_cancelled(self) -> None:
         if self.cancel_event.is_set():

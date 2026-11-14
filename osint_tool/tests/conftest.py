@@ -67,6 +67,22 @@ def sample_image_file(tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def offline_dns(monkeypatch):
+    """Birim testleri gerçek ağa UDP/53 göndermesin, sistem çözümleyicisine gitmesin; taşıyıcı
+    sağlık durumu testler arasında taşınmasın. DoH taşıyıcıları sahte HTTP üzerinden çalışır."""
+    from pwrosint.core import dns
+
+    def no_network(ctx, name, rtype):
+        raise OsintError("testte ağ yok")
+
+    monkeypatch.setattr(dns, "TRANSPORTS", [
+        (n, no_network if ("53" in n or n == "Sistem çözümleyicisi") else t) for n, t in dns.TRANSPORTS])
+    dns.reset_health()
+    yield
+    dns.reset_health()
+
+
+@pytest.fixture(autouse=True)
 def isolated_config(tmp_path, monkeypatch):
     """Testler kullanıcının gerçek ayar/önbellek dizinine dokunmasın."""
     monkeypatch.setenv("PWR_OSINT_CONFIG", str(tmp_path / "config.json"))

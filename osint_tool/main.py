@@ -804,8 +804,9 @@ class Diagnostics:
                 ft.Column(spacing=0, expand=True, tight=True, controls=[
                     ft.Text(f"{tool.title} · {action.title}", size=12),
                     ft.Text(detail, size=11, color=MUTED, selectable=True)])]))
+        from pwrosint.core import dns as _dns
         self.status.value = (f"Bitti: {counts['ok']} çalışıyor, {counts['warn']} uyarı, {counts['bad']} hata "
-                             f"({len(jobs)} işlem)")
+                             f"({len(jobs)} işlem) · DNS yolu: {_dns.active_transport() or 'hiçbiri çalışmadı'}")
         self.progress.visible = False
         self.ctx = None
         self.page.update()
