@@ -1,6 +1,6 @@
 [project]
 name = "pwr-osint"
-version = "2.2.0"
+version = "2.3.0"
 description = "PwR Osint - açık kaynak OSINT framework'ü (terminal + Android)"
 readme = "README.md"
 requires-python = ">=3.10"

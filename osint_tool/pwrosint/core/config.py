@@ -28,7 +28,7 @@ class Settings:
     github_token: str = ""
     timeout: int = 10
     max_workers: int = 16
-    user_agent: str = "PwR-Osint/2.2 (+https://github.com/BagwelPower/PwR-Osint)"
+    user_agent: str = "PwR-Osint/2.3 (+https://github.com/BagwelPower/PwR-Osint)"
     disclaimer_accepted: bool = False
 
     @classmethod
