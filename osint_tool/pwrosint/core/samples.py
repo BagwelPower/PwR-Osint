@@ -67,6 +67,14 @@ SAMPLES.update({
     ("hash", "identify"): {"hash": "5f4dcc3b5aa765d61d8327deb882cf99"},
     ("hash", "generate"): {"text": "parola"},
     ("password", "generate"): {"length": "20"},
+    ("cve", "lookup"): {"cve": "CVE-2021-44228"},
+    ("cve", "search"): {"query": "log4j"},
+    ("netinfo", "show"): {},
+    ("httpinspect", "inspect"): {"url": "http://github.com"},
+    ("globalping", "ping"): {"target": "github.com", "location": ""},
+    ("globalping", "traceroute"): {"target": "github.com", "location": "Europe"},
+    ("globalping", "mtr"): {"target": "github.com", "location": "Europe"},
+    ("globalping", "http"): {"target": "github.com", "location": ""},
 })
 
 # Bu işlemler API anahtarı ister; anahtar yoksa "anahtar gerekli" mesajı beklenen davranıştır.

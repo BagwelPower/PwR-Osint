@@ -82,6 +82,26 @@ TOOL_DOCS: dict[str, tuple[str, tuple[str, ...], str]] = {
         "Kriptografik rastgele üreteçle güçlü şifreler, karışan karakter içermeyen okunaklı şifreler ve akılda "
         "kalır parola cümleleri üretir; her birinin entropisini gösterir.",
         ("Yalnızca cihazda (çevrimdışı)",), "Üretilen şifreler hiçbir yere gönderilmez ve kaydedilmez."),
+    "cve": (
+        "Bir CVE için NVD'den CVSS puanı, vektörü ve zafiyet türü (CWE), etkilenen ürün ve sürümler, referanslar; "
+        "CISA KEV kataloğundan aktif istismar ve fidye yazılımı kullanımı; FIRST EPSS'ten 30 gün içinde istismar "
+        "olasılığı. Ürün adıyla arama yapıp en yeni CVE'leri listeler.",
+        ("NVD", "CISA KEV", "FIRST EPSS", "CIRCL (yedek)"),
+        "NVD anahtarsız kullanımda 30 saniyede 5 istekle sınırlıdır; yoğun aramalarda kısa bekleme olabilir."),
+    "netinfo": (
+        "Bağlı olduğunuz ağı özetler: public IPv4/IPv6, operatör ve ASN, yerel IP, NAT/CGNAT durumu, büyük DNS "
+        "sağlayıcılarına gecikme ve cihazda çalışan DNS yolu.",
+        ("ipify", "ipinfo.io", "Doğrudan TCP ölçümü"), ""),
+    "httpinspect": (
+        "Bir adrese yapılan isteği adım adım gösterir: her yönlendirme ve süresi, HTTP→HTTPS yönlendirmesi, son "
+        "yanıtın tüm başlıkları, sıkıştırma, önbellek, CDN tespiti ve çerezlerin Secure/HttpOnly/SameSite durumu.",
+        ("Hedef site",), ""),
+    "globalping": (
+        "Dünyanın farklı ülke ve operatörlerindeki gönüllü sondalardan ping, traceroute, MTR ve HTTPS "
+        "erişilebilirlik ölçümü. 'Konum' alanına ülke (TR), şehir, kıta ya da ASN yazılabilir.",
+        ("Globalping (jsDelivr)",),
+        "Ölçümler telefondan değil uzak sondalardan yapılır (Android'de root olmadan traceroute mümkün değildir). "
+        "Ücretsiz kullanım saatlik ölçüm limitine tabidir."),
     "dns": (
         "A, AAAA, CNAME, MX, NS, TXT, SOA, CAA kayıtlarını sorgular; SPF, DMARC ve CAA politikalarını "
         "değerlendirip domainin hangi servisleri kullandığını doğrulama kayıtlarından çıkarır.",

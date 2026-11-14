@@ -195,3 +195,266 @@ register(Tool("emailheader", "E-posta Başlık Analizi", "Oltalama incelemesi: S
                                                      "Received: from … (Gmail: ⋮ → Orijinali göster)", "multiline",
                                                      parse_headers, sensitive=True),), _email_header)]))
 
+
+
+# ---------------------------------------------------------------- CVE
+
+CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,7}$", re.I)
+NVD = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+KEV_MAX_AGE = 24 * 3600
+NVD_RETRY_DELAY = 6  # sn; anahtarsız NVD limiti (testlerde 0)
+
+
+def cve_id(value: str) -> str:
+    v = value.strip().upper().replace("_", "-")
+    if not CVE_RE.match(v):
+        raise ValueError("Format: CVE-2021-44228")
+    return v
+
+
+def _keyword(value: str) -> str:
+    v = " ".join(value.split())
+    if len(v) < 3:
+        raise ValueError("En az 3 karakter (ör. 'fortinet ssl vpn', 'apache struts')")
+    return v
+
+
+def load_kev(ctx: Context) -> dict[str, dict]:
+    """CISA 'aktif olarak istismar edilen zafiyetler' kataloğu; günde bir yenilenir, önbellekte tutulur."""
+    import json as _json
+    import os
+    import time as _time
+
+    from ..core.config import config_path
+    from ..core.errors import OsintError
+
+    cache = config_path().with_name("cisa-kev.json")
+    data = None
+    try:
+        if cache.exists() and _time.time() - cache.stat().st_mtime < KEV_MAX_AGE:
+            data = _json.loads(cache.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = None
+    if data is None:
+        try:
+            data = ctx.http.json(KEV_URL, timeout=max(30, ctx.settings.timeout))
+            try:
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                tmp = cache.with_suffix(".tmp")
+                tmp.write_text(_json.dumps(data), encoding="utf-8")
+                os.replace(tmp, cache)
+            except OSError:
+                pass
+        except OsintError:
+            if cache.exists():
+                data = _json.loads(cache.read_text(encoding="utf-8"))
+            else:
+                raise
+    return {str(v.get("cveID", "")).upper(): v for v in (data or {}).get("vulnerabilities") or [] if isinstance(v, dict)}
+
+
+def _cvss(metrics: dict) -> tuple[float | None, str, str, str]:
+    """(puan, önem, vektör, sürüm) — en yeni CVSS sürümünü tercih eder."""
+    for key, ver in (("cvssMetricV40", "4.0"), ("cvssMetricV31", "3.1"), ("cvssMetricV30", "3.0"),
+                     ("cvssMetricV2", "2.0")):
+        entries = metrics.get(key) or []
+        if entries:
+            primary = next((e for e in entries if e.get("type") == "Primary"), entries[0])
+            data = primary.get("cvssData") or {}
+            sev = data.get("baseSeverity") or primary.get("baseSeverity") or ""
+            return data.get("baseScore"), str(sev), data.get("vectorString", ""), ver
+    return None, "", "", ""
+
+
+SEVERITY_TR = {"CRITICAL": "Kritik", "HIGH": "Yüksek", "MEDIUM": "Orta", "LOW": "Düşük", "NONE": "Yok"}
+
+
+def _sev_level(score: float | None) -> Level:
+    if score is None:
+        return Level.INFO
+    return Level.BAD if score >= 7 else Level.WARN if score >= 4 else Level.INFO
+
+
+def _nvd(ctx: Context, params: dict) -> dict:
+    from ..core.errors import OsintError
+    for attempt in range(2):  # anahtarsız NVD: 30 sn'de 5 istek; 403/429'da bir kez bekleyip dene
+        try:
+            return ctx.http.json(NVD, params=params, timeout=max(30, ctx.settings.timeout))
+        except OsintError as e:
+            if attempt == 0 and any(c in str(e) for c in ("403", "429", "503")):
+                ctx.cancel_event.wait(NVD_RETRY_DELAY)
+                continue
+            raise
+    return {}
+
+
+def _cve_circl(ctx: Context, cid: str) -> dict:
+    """Yedek kaynak: CIRCL Vulnerability-Lookup (CVE JSON 5 biçimi)."""
+    data = ctx.http.json(f"https://cve.circl.lu/api/cve/{cid}", timeout=max(20, ctx.settings.timeout))
+    cna = ((data or {}).get("containers") or {}).get("cna") or {}
+    desc = next((d.get("value", "") for d in cna.get("descriptions") or [] if d.get("lang", "").startswith("en")), "")
+    score = sev = vector = ver = ""
+    for m in cna.get("metrics") or []:
+        for key, v in (("cvssV4_0", "4.0"), ("cvssV3_1", "3.1"), ("cvssV3_0", "3.0")):
+            if key in m:
+                score, sev, vector, ver = (m[key].get("baseScore"), m[key].get("baseSeverity", ""),
+                                           m[key].get("vectorString", ""), v)
+                break
+        if score:
+            break
+    meta = (data or {}).get("cveMetadata") or {}
+    return {"id": cid, "published": meta.get("datePublished", ""), "status": meta.get("state", ""),
+            "description": desc, "score": score or None, "severity": sev, "vector": vector, "version": ver,
+            "cwes": [d.get("cweId") for pt in cna.get("problemTypes") or [] for d in pt.get("descriptions") or []
+                     if d.get("cweId")],
+            "products": [f"{a.get('vendor', '')} {a.get('product', '')}".strip() for a in cna.get("affected") or []],
+            "references": [r.get("url") for r in cna.get("references") or [] if r.get("url")]}
+
+
+def _cve_nvd(ctx: Context, cid: str) -> dict | None:
+    data = _nvd(ctx, {"cveId": cid})
+    vulns = (data or {}).get("vulnerabilities") or []
+    if not vulns:
+        return None
+    c = vulns[0].get("cve") or {}
+    score, sev, vector, ver = _cvss(c.get("metrics") or {})
+    desc = next((d.get("value", "") for d in c.get("descriptions") or [] if d.get("lang") == "en"), "")
+    products = []
+    for conf in c.get("configurations") or []:
+        for node in conf.get("nodes") or []:
+            for m in node.get("cpeMatch") or []:
+                if m.get("vulnerable"):
+                    parts = str(m.get("criteria", "")).split(":")
+                    if len(parts) > 5:
+                        rng = " ".join(x for x in (
+                            f"≥{m['versionStartIncluding']}" if m.get("versionStartIncluding") else "",
+                            f">{m['versionStartExcluding']}" if m.get("versionStartExcluding") else "",
+                            f"<{m['versionEndExcluding']}" if m.get("versionEndExcluding") else "",
+                            f"≤{m['versionEndIncluding']}" if m.get("versionEndIncluding") else "") if x)
+                        ver_txt = parts[5] if parts[5] not in ("*", "-") else ""
+                        products.append(f"{parts[3]} {parts[4]} {ver_txt} {rng}".replace("_", " ").strip())
+    return {"id": c.get("id", cid), "published": c.get("published", ""), "status": c.get("vulnStatus", ""),
+            "description": desc, "score": score, "severity": sev, "vector": vector, "version": ver,
+            "cwes": [d.get("value") for w in c.get("weaknesses") or [] for d in w.get("description") or []
+                     if str(d.get("value", "")).startswith("CWE-")],
+            "products": list(dict.fromkeys(products)),
+            "references": [r.get("url") for r in c.get("references") or [] if r.get("url")]}
+
+
+def _cve(ctx: Context, rep: Report, v: dict) -> None:
+    from ..core.errors import OsintError
+    cid = v["cve"]
+    info = None
+    try:
+        info = _cve_nvd(ctx, cid)
+        rep.source("NVD", True)
+    except OsintError as e:
+        rep.source("NVD", False, str(e).split(": ", 1)[-1])
+    if info is None:
+        try:
+            info = _cve_circl(ctx, cid)
+            rep.source("CIRCL", True)
+            if not info.get("description"):
+                info = None
+        except OsintError as e:
+            rep.source("CIRCL", False, str(e).split(": ", 1)[-1])
+    if info is None:
+        if any(ok for _, ok, _ in rep.sources):
+            rep.section("Sonuç").add("Durum", f"{cid} kayıtlı değil (rezerve edilmiş ya da hatalı numara)",
+                                     level=Level.MUTED)
+            return
+        raise OsintError("Zafiyet veritabanlarına ulaşılamadı (NVD, CIRCL)")
+
+    sec = rep.section(f"{info['id']}")
+    score = info["score"]
+    sev_tr = SEVERITY_TR.get(str(info["severity"]).upper(), info["severity"])
+    sec.add("CVSS", f"{score} · {sev_tr} (CVSS {info['version']})" if score is not None else "Henüz puanlanmadı",
+            level=_sev_level(score))
+    if info["vector"]:
+        sec.add("Vektör", info["vector"])
+        if "AV:N" in info["vector"]:
+            sec.add("Saldırı yolu", "Ağ üzerinden (uzaktan istismar edilebilir)", level=Level.WARN)
+        if "PR:N" in info["vector"] and "UI:N" in info["vector"]:
+            sec.add("Ön koşul", "Kimlik doğrulama ve kullanıcı etkileşimi gerekmiyor", level=Level.WARN)
+    if info["cwes"]:
+        sec.add("Zafiyet türü (CWE)", ", ".join(dict.fromkeys(info["cwes"])))
+    sec.add("Yayın tarihi", str(info["published"])[:10])
+    if info["status"]:
+        sec.add("Durum", info["status"])
+    if info["description"]:
+        sec.note = info["description"][:900]
+    rep.changed()
+
+    exp = rep.section("İstismar durumu")
+    try:
+        kev = load_kev(ctx).get(cid)
+        rep.source("CISA KEV", True)
+        if kev:
+            exp.add("CISA KEV", f"AKTİF OLARAK İSTİSMAR EDİLİYOR (listeye eklenme: {kev.get('dateAdded', '?')})",
+                    level=Level.BAD)
+            if str(kev.get("knownRansomwareCampaignUse", "")).lower() == "known":
+                exp.add("Fidye yazılımı", "Fidye yazılımı kampanyalarında kullanıldığı biliniyor", level=Level.BAD)
+            if kev.get("requiredAction"):
+                exp.add("Gerekli aksiyon", kev["requiredAction"])
+        else:
+            exp.add("CISA KEV", "Aktif istismar listesinde değil", level=Level.OK)
+    except OsintError as e:
+        rep.source("CISA KEV", False, str(e).split(": ", 1)[-1])
+    try:
+        ep = ctx.http.json("https://api.first.org/data/v1/epss", params={"cve": cid})
+        rows = [r for r in (ep or {}).get("data") or [] if isinstance(r, dict)]
+        rep.source("FIRST EPSS", True)
+        if rows:
+            p, pct = float(rows[0].get("epss", 0)), float(rows[0].get("percentile", 0))
+            exp.add("EPSS (30 gün içinde istismar olasılığı)", f"%{p * 100:.2f} · tüm CVE'lerin %{pct * 100:.0f}'inden yüksek",
+                    level=Level.BAD if p >= 0.1 else Level.WARN if p >= 0.01 else Level.INFO)
+    except OsintError as e:
+        rep.source("FIRST EPSS", False, str(e).split(": ", 1)[-1])
+
+    if info["products"]:
+        prod = rep.section(f"Etkilenen ürünler ({len(info['products'])})")
+        for p in info["products"][:40]:
+            prod.add(p)
+    refs = rep.section("Referanslar ve PoC araması")
+    for url in info["references"][:15]:
+        refs.add(url.split("/")[2] if "://" in url else url, url, url=url)
+    refs.link("Exploit-DB", f"https://www.exploit-db.com/search?cve={cid.split('-', 1)[1]}")
+    refs.link("GitHub PoC araması", f"https://github.com/search?q={cid}&type=repositories")
+    refs.link("NVD", f"https://nvd.nist.gov/vuln/detail/{cid}")
+
+
+def _cve_search(ctx: Context, rep: Report, v: dict) -> None:
+    data = _nvd(ctx, {"keywordSearch": v["query"], "resultsPerPage": 30})
+    vulns = [x.get("cve") or {} for x in (data or {}).get("vulnerabilities") or []]
+    total = (data or {}).get("totalResults", len(vulns))
+    rep.source("NVD", True)
+    try:
+        kev = load_kev(ctx)
+    except Exception:  # KEV yoksa da arama sonucu gösterilsin
+        kev = {}
+    rows = []
+    for c in vulns:
+        score, sev, _, _ = _cvss(c.get("metrics") or {})
+        rows.append((score or 0, c))
+    rows.sort(key=lambda r: (str(r[1].get("published", ""))), reverse=True)
+    sec = rep.section(f"Sonuçlar (en yeni {len(rows)} / {total})")
+    for score, c in rows:
+        cid = c.get("id", "")
+        desc = next((d.get("value", "") for d in c.get("descriptions") or [] if d.get("lang") == "en"), "")
+        flag = " · KEV: aktif istismar" if cid in kev else ""
+        sec.add(f"{cid} · {score or '—'}", f"{str(c.get('published', ''))[:10]}{flag} · {desc[:160]}",
+                url=f"https://nvd.nist.gov/vuln/detail/{cid}",
+                level=Level.BAD if cid in kev else _sev_level(score or None))
+    if not rows:
+        sec.add("Eşleşen CVE yok", level=Level.MUTED)
+    rep.summary = (f"{total} CVE bulundu; {sum(1 for _, c in rows if c.get('id') in kev)} tanesi aktif olarak "
+                   "istismar ediliyor (CISA KEV).")
+
+
+register(Tool("cve", "CVE Sorgusu", "CVSS, aktif istismar (CISA KEV), EPSS, etkilenen ürünler", "BUG_REPORT",
+              "Güvenlik Analizi", [
+                  Action("lookup", "CVE numarası", (Field("cve", "CVE", "CVE-2021-44228", parse=cve_id),), _cve),
+                  Action("search", "Ürün / anahtar kelime",
+                         (Field("query", "Ürün veya anahtar kelime", "fortinet ssl vpn", parse=_keyword),),
+                         _cve_search)]))

@@ -761,7 +761,9 @@ class ToolScreen:
 # ---------------------------------------------------------------- tanılama
 
 # Tanılamada atlananlar: derin tarama çok uzun; dosya seçimi kullanıcı etkileşimi ister.
-DIAG_SKIP = {("username", "deep"), ("image", "file"), ("fullscan", "scan")}
+DIAG_SKIP = {("username", "deep"), ("image", "file"), ("fullscan", "scan"),
+             # Globalping ücretsiz ölçüm kotası kullanır; tanılamada harcanmasın
+             ("globalping", "ping"), ("globalping", "traceroute"), ("globalping", "mtr"), ("globalping", "http")}
 
 
 class Diagnostics:

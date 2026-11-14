@@ -25,6 +25,10 @@ class FakeHttp(Http):
         self.routes.append((prefix, (status, body, match_params)))
         return self
 
+    def post(self, url, **kw):
+        self.posted = getattr(self, "posted", []) + [(url, kw)]
+        return self.get(url, **{k: v for k, v in kw.items() if k in ("params", "headers", "timeout")})
+
     def get(self, url, **kw):
         self.calls.append((url, kw))
         params = kw.get("params") or {}
@@ -78,6 +82,11 @@ def offline_dns(monkeypatch):
     monkeypatch.setattr(dns, "TRANSPORTS", [
         (n, no_network if ("53" in n or n == "Sistem çözümleyicisi") else t) for n, t in dns.TRANSPORTS])
     dns.reset_health()
+    from pwrosint.modules import nettools, security
+    monkeypatch.setattr(security, "NVD_RETRY_DELAY", 0)
+    # Ham soket açan yardımcılar birim testlerinde ağa çıkmasın.
+    monkeypatch.setattr(nettools, "local_ip", lambda: "192.168.1.23")
+    monkeypatch.setattr(nettools, "tcp_rtt", lambda *a, **k: None)
     yield
     dns.reset_health()
 

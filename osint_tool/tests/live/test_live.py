@@ -252,3 +252,51 @@ def test_dns_transport(name, transport):
         assert any("v=spf1" in t for t in txt), (name, txt)
         status, _ = transport(ctx, "bu-domain-kesinlikle-yok-pwr-12345.com", "A")
         assert status == "NXDOMAIN", (name, status)
+
+
+# ---------------------------------------------------------------- bilişimci araçları (2. aşama)
+
+def test_cve_log4j_real():
+    from pwrosint.modules.security import cve_id
+    r = run("cve", "lookup", cve=cve_id("CVE-2021-44228"))
+    assert not r.errors, r.errors
+    sec = section(r, "CVE-2021-44228")
+    assert sec["CVSS"].value.startswith("10.0"), sec["CVSS"].value
+    exp = section(r, "İstismar")
+    assert exp["CISA KEV"].level == Level.BAD
+    assert "EPSS (30 gün içinde istismar olasılığı)" in exp
+    assert len(section(r, "Etkilenen ürünler")) > 0
+
+
+def test_cve_search_real():
+    r = run("cve", "search", query="fortinet fortios ssl vpn")
+    assert not r.errors and len(section(r, "Sonuçlar")) > 0
+
+
+def test_netinfo_real():
+    r = run("netinfo", "show")
+    assert not r.errors
+    assert section(r, "İnternet")["Public IPv4"].level == Level.OK
+    assert "Çalışan DNS yolu" in section(r, "Gecikme")
+
+
+def test_httpinspect_real():
+    from pwrosint.modules.nettools import http_url
+    r = run("httpinspect", "inspect", url=http_url("http://github.com"))
+    assert not r.errors
+    chain = [s for s in r.sections if s.title == "İstek zinciri"][0].items
+    assert chain[0].label.startswith("1. 301") and chain[-1].label.split()[1] == "200"
+
+
+def test_globalping_ping_real():
+    r = run("globalping", "ping", target="github.com", location=None)
+    assert not r.errors, r.errors
+    rows = [s for s in r.sections if s.title.startswith("Ping")][0].items
+    assert any(i.level == Level.OK for i in rows), [i.value for i in rows]
+
+
+def test_globalping_traceroute_real():
+    r = run("globalping", "traceroute", target="github.com", location="Europe")
+    assert not r.errors, r.errors
+    traces = [s for s in r.sections if s.title.startswith("Traceroute")]
+    assert traces and len(traces[0].items) >= 3
