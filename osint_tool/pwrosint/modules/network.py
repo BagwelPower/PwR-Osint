@@ -283,6 +283,18 @@ def _trust_store() -> ssl.SSLContext:
 
 
 def fetch_certificate(host: str, port: int, timeout: int) -> dict[str, Any]:
+    """Sertifikayı alır; bağlantı anlık koparsa (ör. 'connection reset') bir kez daha dener."""
+    try:
+        return _fetch_certificate(host, port, timeout)
+    except OsintError as e:
+        if "reset" not in str(e).lower() and "104" not in str(e):
+            raise
+        import time as _time
+        _time.sleep(1)
+        return _fetch_certificate(host, port, timeout)
+
+
+def _fetch_certificate(host: str, port: int, timeout: int) -> dict[str, Any]:
     """Sertifikayı alır. Doğrulama başarısız olsa da ham sertifikayı döndürür."""
     out: dict[str, Any] = {"verified": True, "error": None}
     ctx = _trust_store()

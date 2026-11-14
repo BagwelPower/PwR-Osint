@@ -67,7 +67,7 @@ def test_falls_back_to_ip_doh_when_hostname_doh_blocked(ctx, http):
 def test_falls_back_to_wire_doh(ctx, http):
     http.add("https://", OsintError("engelli"))
     wire = response("ornek.com", "MX", [(15, b"\x00\x05\x02mx\xc0\x0c")])
-    http.add("https://9.9.9.9/dns-query", wire)
+    http.add("https://1.0.0.1/dns-query", wire)
     assert dns.resolve(ctx, "ornek.com", "MX") == ["5 mx.ornek.com."]
 
 
