@@ -74,3 +74,11 @@ def test_url_never_suggests_opening_first():
     """Şüpheli URL yapıştırınca ilk öneri sayfayı telefondan açan bir araç olmamalı."""
     for text in ("https://ptt-kargo-takip.xyz/odeme", "http://203.0.113.5/giris", "https://bit.ly/abc"):
         assert suggest(text)[0].tool == "linkcheck", text
+
+
+def test_file_paths_not_saved_in_history(tmp_path):
+    from pwrosint.core.history import History
+    from pwrosint.core.registry import get_tool
+    h = History(tmp_path / "h.json")
+    h.add("filescan", get_tool("filescan").action("analyze"), {"file": "/data/user/0/cache/fatura.pdf"})
+    assert h.entries == []

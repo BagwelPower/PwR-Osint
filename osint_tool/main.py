@@ -441,7 +441,7 @@ class ToolScreen:
         for f in self.action.fields:
             if f.kind == "file":
                 tf = text_field(f.label, hint_text=f.placeholder, value=prefill.get(f.name, ""), read_only=True,
-                                prefix_icon=ft.Icons.IMAGE)
+                                prefix_icon=ft.Icons.IMAGE if f.accept else ft.Icons.ATTACH_FILE)
                 self.inputs[f.name] = tf
                 self.fields_col.controls.append(tf)
                 self.fields_col.controls.append(ft.OutlinedButton(

@@ -39,7 +39,9 @@ class History:
             return []
 
     def add(self, tool_id: str, action: Action, raw: dict[str, str]) -> None:
-        values = {f.name: raw.get(f.name, "") for f in action.fields if not f.is_sensitive}
+        # Dosya yolları geçmişe yazılmaz: seçicinin geçici kopyası sonra silinir, adı da kişisel olabilir.
+        values = {f.name: raw.get(f.name, "") for f in action.fields
+                  if not f.is_sensitive and f.kind != "file"}
         if not any(values.values()):
             return
         self.entries = [e for e in self.entries
