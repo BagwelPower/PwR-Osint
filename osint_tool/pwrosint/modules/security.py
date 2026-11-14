@@ -203,7 +203,7 @@ CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,7}$", re.I)
 NVD = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 KEV_MAX_AGE = 24 * 3600
-NVD_RETRY_DELAY = 6  # sn; anahtarsız NVD limiti (testlerde 0)
+NVD_RETRY_DELAY = 5  # sn; anahtarsız NVD limiti, her denemede artar (testlerde 0)
 
 
 def cve_id(value: str) -> str:
@@ -278,13 +278,19 @@ def _sev_level(score: float | None) -> Level:
 
 def _nvd(ctx: Context, params: dict) -> dict:
     from ..core.errors import OsintError
-    for attempt in range(2):  # anahtarsız NVD: 30 sn'de 5 istek; 403/429'da bir kez bekleyip dene
+    # Anahtarsız NVD: 30 sn'de 5 istek; yoğunlukta 403/429/503 döner. Artan beklemeyle 3 deneme.
+    for attempt in range(3):
         try:
             return ctx.http.json(NVD, params=params, timeout=max(30, ctx.settings.timeout))
         except OsintError as e:
-            if attempt == 0 and any(c in str(e) for c in ("403", "429", "503")):
-                ctx.cancel_event.wait(NVD_RETRY_DELAY)
+            busy = any(c in str(e) for c in ("403", "429", "503"))
+            if busy and attempt < 2:
+                ctx.cancel_event.wait(NVD_RETRY_DELAY * (attempt + 1))
+                ctx.check_cancelled()
                 continue
+            if busy:
+                raise OsintError("NVD şu anda yoğun ya da istek limitine ulaşıldı; birkaç dakika sonra tekrar "
+                                 "deneyin (CVE numarasıyla sorgu yedek kaynağa geçer).") from e
             raise
     return {}
 

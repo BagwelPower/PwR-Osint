@@ -1,6 +1,6 @@
 # PwR Osint
 
-**PwR Osint**, telefonda çalışan açık kaynak bir OSINT (açık kaynak istihbarat) ve siber güvenlik keşif aracıdır. Kişi, sosyal medya, domain, IP, web sitesi, sızıntı, kripto para ve fotoğraf için **28 araç ve 41 işlem** sunar. Çoğu API anahtarı gerektirmez.
+**PwR Osint**, telefonda çalışan açık kaynak bir OSINT (açık kaynak istihbarat) ve siber güvenlik keşif aracıdır. Kişi, sosyal medya, domain, IP, web sitesi, sızıntı, zafiyet, ağ yönetimi, kripto para ve fotoğraf için **40 araç ve 61 işlem** sunar. Çoğu API anahtarı gerektirmez.
 
 Aynı çekirdek üç arayüzden kullanılır:
 
@@ -57,8 +57,20 @@ Aynı çekirdek üç arayüzden kullanılır:
 | | Tehdit İtibarı | Domain, IP ya da dosya hash'i için AlienVault OTX tehdit raporları ve zararlı aileleri; anahtarla VirusTotal motorları. | VT (isteğe bağlı) |
 | | Oltalama & Taklit | Domainin yüzlerce benzerini üretir, **kayıtlı ve e-posta alabilen** taklitleri bulur; OpenPhish akışında arar. | — |
 | | Kara Liste | IP'nin 10 DNSBL listesindeki durumu. | — |
+| **Güvenlik Analizi** | CVE Sorgusu | NVD'den CVSS, vektör ve CWE, etkilenen ürün sürümleri; **CISA KEV** (aktif istismar, fidye yazılımı), **FIRST EPSS** (istismar olasılığı); ürün adıyla arama. | — |
+| | E-posta Başlık Analizi | Oltalama incelemesi: alıcı sunucunun SPF/DKIM/DMARC kararı, From/Reply-To/Return-Path tutarlılığı, marka taklidi, teslim yolu ve gecikmeler, **gönderenin IP'si**. Çevrimdışı. | — |
+| **Ağ Araçları** | Bağlantım | Public IPv4/IPv6, operatör ve ASN, yerel IP, NAT/CGNAT, gecikme, çalışan DNS yolu. | — |
+| | HTTP İnceleme | Adım adım yönlendirme zinciri ve süreleri, tüm başlıklar, CDN, çerez güvenlik bayrakları. | — |
+| | Küresel Ölçüm | Dünyadaki sondalardan **ping, traceroute, MTR** ve erişilebilirlik (Globalping). | — |
+| | Port Tarama ⚠ | Tek hostta 85 yaygın TCP portu, servis, banner ve riskli servis uyarıları. **Aktif, onay ister.** | — |
+| | Yerel Ağ Keşfi ⚠ | Wi-Fi ağınızdaki cihazlar ve türleri (router, yazıcı, kamera, iPhone…). **Aktif, yalnızca kendi Wi-Fi ağınızda.** | — |
+| | Hız Testi | Gecikme, jitter, indirme ve yükleme hızı; harcanan veri gösterilir. | — |
 | **Kripto** | Kripto Adres | Bitcoin (Legacy, SegWit, Taproot; sağlama toplamı doğrulamalı) ve Ethereum: bakiye, USD ve TL karşılığı, işlemler. | — |
 | **Görsel & Dosya** | Görsel Analizi | **Cihazdan ya da URL'den** fotoğrafın EXIF bilgisi (cihaz, tarih, seri no, düzenleme izi), **GPS konumu ve adresi**; tersine görsel arama. | — |
+| **Araç Kutusu** | Subnet Hesaplayıcı | IPv4/IPv6 CIDR, maske, aralık, CGNAT tespiti, alt ağlara bölme. Çevrimdışı. | — |
+| | Kod Çözücü | **JWT** çözme ve güvenlik riskleri (alg:none, HS*, süre), Base64/Hex/URL/gzip otomatik çözme, zaman damgası. | — |
+| | Hash Araçları | Hash türü tanıma ve Hashcat modu; MD5/SHA/SHA3/BLAKE2/NTLM üretme. | — |
+| | Şifre Üretici | Kriptografik rastgele şifre ve parola cümlesi, entropi bilgisiyle. | — |
 | **Diğer** | Konum | Koordinattan adres ve harita linkleri; MAC adresinden üretici, rastgele MAC tespiti, WiGLE konumu. | WiGLE (isteğe bağlı) |
 | | Araç | VIN için yapı, kontrol hanesi ve NHTSA çözümlemesi; Türk plakası için il ve biçim doğrulaması. | — |
 
@@ -91,6 +103,9 @@ python -m pwrosint fullscan ornek.com --html rapor.html
 python -m pwrosint username deep kullanici_adi
 python -m pwrosint image file ~/foto.jpg
 python -m pwrosint host 8.8.8.8 --json                # makine okunur çıktı
+python -m pwrosint cve lookup CVE-2021-44228
+python -m pwrosint emailheader analyze @baslik.txt    # dosyadan çok satırlı girdi
+python -m pwrosint portscan scan 192.168.1.1 --yes    # aktif araç: --yes ile onay
 ```
 
 Sorgu sürerken `Ctrl+C` yalnızca sorguyu iptal eder, programı kapatmaz.
@@ -143,7 +158,7 @@ Modüller ekrana bir şey yazmaz; bir `Report` doldurur. Terminal, Android, JSON
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest                        # 380+ birim ve sağlamlık testi, internet gerekmez
+python -m pytest                        # 550+ birim ve sağlamlık testi, internet gerekmez
 PWR_LIVE=1 python -m pytest tests/live  # her işlem gerçek servislere karşı
 ```
 
@@ -155,7 +170,10 @@ PWR_LIVE=1 python -m pytest tests/live  # her işlem gerçek servislere karşı
 
 ## ⚠️ Yasal uyarı
 
-Bu araç **yalnızca eğitim, araştırma, gazetecilik ve kendi sistemlerinizdeki ya da yazılı izin aldığınız hedeflerdeki güvenlik testleri** için tasarlanmıştır. Yalnızca herkese açık kaynakları sorgular; hedefe port taraması ya da saldırı niteliğinde istek göndermez.
+Bu araç **yalnızca eğitim, araştırma, gazetecilik, sistem yönetimi ve kendi sistemlerinizdeki ya da yazılı izin aldığınız hedeflerdeki güvenlik testleri** için tasarlanmıştır.
+
+- OSINT araçları yalnızca herkese açık kaynakları sorgular; hedefe saldırı niteliğinde istek göndermez.
+- **⚠ işaretli aktif araçlar** (Port Tarama, Yerel Ağ Keşfi) hedefe doğrudan bağlantı açar. Her çalıştırmadan önce onay ister; port taraması tek bir hostla ve 85 yaygın portla, yerel ağ keşfi cihazın kendi Wi-Fi ağıyla sınırlıdır. İzinsiz tarama Türkiye'de TCK 243 kapsamında suçtur.
 
 - Başkalarının kişisel verilerini izinsiz toplamayın, saklamayın, paylaşmayın.
 - Yerel yasalara uyun: Türkiye'de KVKK ve TCK 243–245, AB'de GDPR.

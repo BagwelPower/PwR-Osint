@@ -18,7 +18,10 @@ from samples import NEEDS_KEY, SAMPLES
 
 pytestmark = pytest.mark.skipif(os.environ.get("PWR_LIVE") != "1", reason="canlı testler kapalı")
 
-ALL = [(t, a) for t in all_tools() for a in t.actions if (t.id, a.id) != ("image", "file")]  # yerel dosya: birim testi
+# Canlıda çalıştırılmayanlar: yerel dosya (birim testi), LAN (CI'ın /24'ü başkasına ait),
+# port tarama (localhost dinleyicisiyle ayrı testte), yükleme hızı (gereksiz veri).
+SKIP = {("image", "file"), ("lan", "scan"), ("portscan", "scan"), ("speedtest", "upload")}
+ALL = [(t, a) for t in all_tools() for a in t.actions if (t.id, a.id) not in SKIP]
 
 
 @pytest.mark.parametrize("tool, action", ALL, ids=[f"{t.id}-{a.id}" for t, a in ALL])

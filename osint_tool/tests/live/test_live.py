@@ -300,3 +300,30 @@ def test_globalping_traceroute_real():
     assert not r.errors, r.errors
     traces = [s for s in r.sections if s.title.startswith("Traceroute")]
     assert traces and len(traces[0].items) >= 3
+
+
+def test_portscan_localhost_listener():
+    """Gerçek TCP taraması, ama yalnızca CI makinesinin kendi localhost'unda."""
+    import socket
+    import threading
+    from pwrosint.modules import nettools
+    srv = socket.socket()
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", 8081))
+    srv.listen(5)
+
+    def serve():
+        for _ in range(3):
+            try:
+                c, _ = srv.accept()
+                c.sendall(b"HTTP/1.0 200 OK\r\nServer: pwr-test\r\n\r\n")
+                c.close()
+            except OSError:
+                return
+    threading.Thread(target=serve, daemon=True).start()
+    try:
+        r = run("portscan", "scan", target=nettools.scan_target("127.0.0.1"))
+    finally:
+        srv.close()
+    assert not r.errors
+    assert "pwr-test" in section(r, "Açık portlar")["8081/tcp"].value

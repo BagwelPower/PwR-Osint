@@ -75,6 +75,10 @@ SAMPLES.update({
     ("globalping", "traceroute"): {"target": "github.com", "location": "Europe"},
     ("globalping", "mtr"): {"target": "github.com", "location": "Europe"},
     ("globalping", "http"): {"target": "github.com", "location": ""},
+    ("portscan", "scan"): {"target": "127.0.0.1"},  # asla üçüncü bir tarafa değil
+    ("lan", "scan"): {},
+    ("speedtest", "download"): {"mb": "5"},
+    ("speedtest", "upload"): {},
 })
 
 # Bu işlemler API anahtarı ister; anahtar yoksa "anahtar gerekli" mesajı beklenen davranıştır.

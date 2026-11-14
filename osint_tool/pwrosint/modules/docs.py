@@ -102,6 +102,24 @@ TOOL_DOCS: dict[str, tuple[str, tuple[str, ...], str]] = {
         ("Globalping (jsDelivr)",),
         "Ölçümler telefondan değil uzak sondalardan yapılır (Android'de root olmadan traceroute mümkün değildir). "
         "Ücretsiz kullanım saatlik ölçüm limitine tabidir."),
+    "portscan": (
+        "Tek bir hostta en yaygın 85 TCP portuna bağlantı dener; açık portların servisini ve karşılama "
+        "mesajını (banner) gösterir, internete açık olması riskli servisleri (veritabanları, RDP, SMB, Telnet, "
+        "Docker…) işaretler; kapalı ve filtreli port sayısını ayırır.",
+        ("Doğrudan TCP bağlantısı (aktif)",),
+        "AKTİF araç: hedefe bağlantı açar. Yalnızca sahibi olduğunuz ya da yazılı izin aldığınız sistemlerde "
+        "kullanın. Ağ aralığı kabul edilmez; UDP ve servis sürüm taraması yapılmaz."),
+    "lan": (
+        "Bağlı olduğunuz Wi-Fi ağındaki (/24) cihazları bulur; açık portlarından cihaz türünü (router, yazıcı, "
+        "IP kamera, iPhone, Chromecast, Windows, NAS…) ve varsa adını tahmin eder.",
+        ("Doğrudan TCP bağlantısı (aktif, yalnızca yerel ağ)",),
+        "Yalnızca özel Wi-Fi ağında çalışır; mobil veride ve operatör NAT'ında reddedilir. Android 10+ MAC "
+        "adreslerini gizlediği için üretici bilgisi yoktur; hiçbir port açmayan cihazlar görünmeyebilir."),
+    "speedtest": (
+        "Cloudflare hız sunucusuyla HTTP gecikmesi, titreşim (jitter), indirme ve ayrı olarak yükleme hızını "
+        "ölçer; harcanan veri miktarını gösterir.",
+        ("speed.cloudflare.com",),
+        "Mobil veride veri harcar (indirme varsayılanı ≈ 16 MB). Sonuç en yakın Cloudflare sunucusuna göredir."),
     "dns": (
         "A, AAAA, CNAME, MX, NS, TXT, SOA, CAA kayıtlarını sorgular; SPF, DMARC ve CAA politikalarını "
         "değerlendirip domainin hangi servisleri kullandığını doğrulama kayıtlarından çıkarır.",

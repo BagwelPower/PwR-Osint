@@ -140,3 +140,21 @@ def test_globalping_quota(ctx, http):
     http.add(nettools.GLOBALPING, {"error": {}}, status=429)
     report = run(ctx, "globalping", "ping", target="github.com", location=None)
     assert "limit" in report.errors[0]
+
+
+def test_globalping_mtr_handles_silent_hops(ctx, http):
+    http.add(nettools.GLOBALPING, {"id": "m2"})
+    http.add(nettools.GLOBALPING + "/m2", {"status": "finished", "results": [
+        {"probe": {"city": "Helsinki", "country": "FI", "asn": 24940},
+         "result": {"hops": [{"resolvedAddress": "172.31.1.1", "stats": {"avg": 1.7, "loss": 0}},
+                             {"resolvedAddress": None, "stats": {"avg": None, "loss": None}}]}}]})
+    report = run(ctx, "globalping", "mtr", target="github.com", location="Europe")
+    assert not report.errors
+    sec = next(s for s in report.sections if s.title.startswith("MTR"))
+    assert sec.items[1].value == "* * *" and sec.items[1].level == Level.MUTED
+
+
+def test_nvd_busy_message(ctx, http):
+    http.add(security.NVD, "Service Unavailable", status=503)
+    report = run(ctx, "cve", "search", query="log4j")
+    assert "NVD şu anda yoğun" in report.errors[0]

@@ -260,8 +260,12 @@ def _gp_trace(ctx: Context, rep: Report, v: dict, mtype: str = "traceroute") -> 
             name = hop.get("resolvedHostname") or ""
             if mtype == "mtr":
                 st = hop.get("stats") or {}
-                val = f"ort {st.get('avg', 0):.1f} ms · kayıp %{st.get('loss', 0)}"
-                level = Level.WARN if st.get("loss") else Level.INFO
+                avg, loss = st.get("avg"), st.get("loss")
+                if avg is None:  # yanıt vermeyen yönlendirici
+                    val, level = "* * *", Level.MUTED
+                else:
+                    val = f"ort {avg:.1f} ms · kayıp %{loss if loss is not None else '?'}"
+                    level = Level.WARN if loss else Level.INFO
             else:
                 rtts = [t.get("rtt") for t in hop.get("timings") or [] if t.get("rtt") is not None]
                 val = f"{min(rtts):.1f} ms" if rtts else "* * *"
@@ -309,3 +313,284 @@ register(Tool("globalping", "Küresel Ölçüm", "Dünyadan ping, traceroute, MT
                   Action("traceroute", "Traceroute", (TARGET, LOCATION), _gp_trace),
                   Action("mtr", "MTR", (TARGET, LOCATION), lambda c, r, v: _gp_trace(c, r, v, "mtr")),
                   Action("http", "Erişilebilirlik", (TARGET, LOCATION), _gp_http)]))
+
+
+# ---------------------------------------------------------------- Port Tarama (aktif)
+
+# En yaygın TCP portları (nmap top-ports ve sahada sık görülen servisler)
+TOP_PORTS: dict[int, str] = {
+    21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP", 53: "DNS", 80: "HTTP", 81: "HTTP-alt", 88: "Kerberos",
+    110: "POP3", 111: "RPCbind", 135: "MS-RPC", 139: "NetBIOS", 143: "IMAP", 161: "SNMP", 389: "LDAP",
+    443: "HTTPS", 445: "SMB", 465: "SMTPS", 500: "IKE", 514: "Syslog", 515: "LPD", 548: "AFP", 554: "RTSP",
+    587: "SMTP-submission", 631: "IPP", 636: "LDAPS", 873: "rsync", 902: "VMware", 993: "IMAPS", 995: "POP3S",
+    1080: "SOCKS", 1194: "OpenVPN", 1433: "MSSQL", 1521: "Oracle", 1723: "PPTP", 1883: "MQTT", 2049: "NFS",
+    2082: "cPanel", 2083: "cPanel-SSL", 2181: "ZooKeeper", 2375: "Docker", 2376: "Docker-TLS", 3000: "Dev/Grafana",
+    3128: "Squid", 3306: "MySQL", 3389: "RDP", 3690: "SVN", 4443: "HTTPS-alt", 4848: "GlassFish", 5000: "Dev/UPnP",
+    5060: "SIP", 5432: "PostgreSQL", 5601: "Kibana", 5672: "AMQP", 5900: "VNC", 5938: "TeamViewer",
+    5984: "CouchDB", 6379: "Redis", 6443: "Kubernetes API", 6667: "IRC", 7001: "WebLogic", 7547: "TR-069",
+    8000: "HTTP-alt", 8008: "HTTP-alt/Chromecast", 8009: "AJP/Chromecast", 8080: "HTTP-proxy", 8081: "HTTP-alt",
+    8086: "InfluxDB", 8088: "HTTP-alt", 8443: "HTTPS-alt", 8888: "HTTP-alt", 9000: "Portainer/PHP-FPM",
+    9090: "Prometheus/Cockpit", 9100: "Yazıcı (JetDirect)", 9200: "Elasticsearch", 9300: "Elasticsearch",
+    9443: "HTTPS-alt", 10000: "Webmin", 10250: "Kubelet", 11211: "Memcached", 15672: "RabbitMQ",
+    27017: "MongoDB", 32400: "Plex", 49152: "UPnP", 62078: "iPhone/iPad (lockdown)",
+}
+SCAN_TIMEOUT = 1.5
+SCAN_WORKERS = 64
+
+
+def probe_port(host: str, port: int, timeout: float = SCAN_TIMEOUT, banner: bool = True) -> tuple[str, str]:
+    """('open'|'closed'|'filtered', banner). 'closed' = bağlantı reddedildi: host canlı, port kapalı."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as s:
+            text = ""
+            if banner:
+                s.settimeout(1.0)
+                try:
+                    if port in (80, 81, 8000, 8008, 8080, 8081, 8088, 8888, 3000, 5000, 9000, 9090):
+                        s.sendall(f"HEAD / HTTP/1.0\r\nHost: {host}\r\n\r\n".encode())
+                    data = s.recv(256)
+                    text = data.decode("latin-1", "replace").strip()
+                except OSError:
+                    pass
+            return "open", text
+    except ConnectionRefusedError:
+        return "closed", ""
+    except OSError:
+        return "filtered", ""
+
+
+def _banner_summary(port: int, text: str) -> str:
+    if not text:
+        return ""
+    first = text.splitlines()[0][:100]
+    if text.startswith("HTTP/"):
+        server = next((ln.split(":", 1)[1].strip() for ln in text.splitlines() if ln.lower().startswith("server:")), "")
+        return f"{first.split(' ', 1)[-1]}{' · ' + server if server else ''}"
+    return first
+
+
+def _portscan(ctx: Context, rep: Report, v: dict) -> None:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from ..core.ports import RISKY_PORTS
+    target: str = v["target"]
+    ip = target if validate.is_ip(target) else next(
+        (x for x in dns.resolve(ctx, target, "A") if validate.is_ip(x)), None)
+    if not ip:
+        raise OsintError(f"{target} bir IP adresine çözülemedi")
+    ports = sorted(TOP_PORTS)
+    found: list[tuple[int, str]] = []
+    closed = filtered = 0
+    start = time.monotonic()
+    with ThreadPoolExecutor(max_workers=SCAN_WORKERS) as pool:
+        futs = {pool.submit(probe_port, ip, p): p for p in ports}
+        for fut in as_completed(futs):
+            if ctx.cancel_event.is_set():
+                for f in futs:
+                    f.cancel()
+                break
+            state, banner = fut.result()
+            port = futs[fut]
+            if state == "open":
+                found.append((port, banner))
+                rep.summary = f"Taranıyor… {len(found)} açık port"
+                rep.changed()
+            elif state == "closed":
+                closed += 1
+            else:
+                filtered += 1
+    took = time.monotonic() - start
+    sec = rep.section(f"Açık portlar · {ip}")
+    for port, banner in sorted(found):
+        risk = RISKY_PORTS.get(port)
+        val = " · ".join(x for x in (TOP_PORTS.get(port, "?"), _banner_summary(port, banner),
+                                     risk[0] if risk else "") if x)
+        sec.add(f"{port}/tcp", val, level=risk[1] if risk else Level.OK)
+    if not found:
+        sec.add("Açık port bulunamadı", level=Level.MUTED)
+    stat = rep.section("Tarama özeti")
+    stat.add("Hedef", f"{target} ({ip})" if target != ip else ip)
+    stat.add("Taranan", f"{len(ports)} yaygın TCP portu · {took:.1f} sn")
+    stat.add("Kapalı (yanıt: reddedildi)", closed)
+    stat.add("Filtreli (yanıt yok/güvenlik duvarı)", filtered)
+    if filtered > len(ports) * 0.9 and not found:
+        stat.note = "Neredeyse tüm portlar yanıtsız: güvenlik duvarı ya da host kapalı olabilir."
+    rep.summary = f"{len(found)} açık port bulundu ({len(ports)} port tarandı)."
+
+
+def scan_target(value: str) -> str:
+    v = value.strip()
+    if "/" in v or "-" in v.split(".")[-1] or "*" in v:
+        raise ValueError("Yalnızca tek bir host (IP veya domain) taranabilir; ağ aralığı kabul edilmez")
+    return validate.host(v)
+
+
+# ---------------------------------------------------------------- Yerel Ağ Keşfi (aktif)
+
+LAN_PORTS = (80, 443, 22, 445, 139, 53, 8080, 554, 9100, 631, 62078, 8008, 8009, 3389, 5000, 1900, 7000, 515)
+DEVICE_HINTS = (
+    ({62078}, "iPhone / iPad"), ({8008, 8009}, "Chromecast / Google TV"), ({9100}, "Yazıcı"),
+    ({631}, "Yazıcı (IPP)"), ({515}, "Yazıcı (LPD)"), ({554}, "IP kamera / NVR (RTSP)"),
+    ({3389}, "Windows (Uzak Masaüstü)"), ({445, 139}, "Windows / NAS (dosya paylaşımı)"),
+    ({7000}, "Apple TV / AirPlay"), ({53}, "Router / DNS sunucusu"), ({22}, "Linux / sunucu / NAS"),
+    ({5000}, "NAS (Synology) / geliştirme sunucusu"),
+)
+
+
+def guess_device(open_ports: set[int], is_gateway: bool) -> str:
+    if is_gateway:
+        return "Router / ağ geçidi"
+    for ports, name in DEVICE_HINTS:
+        if ports & open_ports:
+            return name
+    if open_ports & {80, 443, 8080}:
+        return "Web arayüzlü cihaz"
+    return "Bilinmeyen cihaz"
+
+
+def lan_network(lip: Optional[str]) -> ipaddress.IPv4Network:
+    if not lip:
+        raise OsintError("Yerel IP bulunamadı; Wi-Fi'ye bağlı olduğunuzdan emin olun")
+    addr = ipaddress.ip_address(lip)
+    if addr in ipaddress.ip_network("100.64.0.0/10"):
+        raise OsintError("Operatör (CGNAT) ağındasınız; yerel ağ taraması yalnızca Wi-Fi'de yapılabilir. "
+                         "Wi-Fi'ye bağlanın.")
+    if not addr.is_private or addr.is_loopback:
+        raise OsintError("Cihaz özel bir yerel ağda değil (mobil veri veya public IP). Wi-Fi'ye bağlanın.")
+    return ipaddress.ip_network(f"{lip}/24", strict=False)
+
+
+def _lan(ctx: Context, rep: Report, v: dict) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    lip = local_ip()
+    net = lan_network(lip)
+    hosts = [str(h) for h in net.hosts()]
+    gateway = str(net.network_address + 1)
+
+    def probe_host(ip: str) -> tuple[str, set[int]]:
+        if ctx.cancel_event.is_set():
+            return ip, set()
+        alive, open_ports = False, set()
+        for port in LAN_PORTS:
+            state, _ = probe_port(ip, port, timeout=0.6, banner=False)
+            if state == "open":
+                alive = True
+                open_ports.add(port)
+            elif state == "closed":
+                alive = True  # bağlantı reddedildi: cihaz var, port kapalı
+            if alive and len(open_ports) >= 4:
+                break
+        return (ip, open_ports) if alive else ("", set())
+
+    start = time.monotonic()
+    found: list[tuple[str, set[int]]] = []
+    with ThreadPoolExecutor(max_workers=48) as pool:
+        for ip, ports in pool.map(probe_host, hosts):
+            if ip:
+                found.append((ip, ports))
+                rep.summary = f"Taranıyor… {len(found)} cihaz bulundu"
+                rep.changed()
+    if ctx.cancel_event.is_set():
+        rep.notice("Tarama iptal edildi; bulunanlar gösteriliyor.")
+    sec = rep.section(f"Cihazlar ({len(found)}) · {net}")
+    for ip, ports in sorted(found, key=lambda x: ipaddress.ip_address(x[0])):
+        try:
+            name = socket.gethostbyaddr(ip)[0]
+        except OSError:
+            name = ""
+        kind = guess_device(ports, ip == gateway)
+        me = " · BU CİHAZ" if ip == lip else ""
+        sec.add(ip + me, " · ".join(x for x in (kind, name, ("portlar: " + ", ".join(map(str, sorted(ports))))
+                                                if ports else "") if x),
+                level=Level.WARN if ports & {23, 3389, 445, 5900} and ip != lip else Level.INFO)
+    info = rep.section("Tarama")
+    info.add("Ağ", f"{net} · bu cihaz {lip} · ağ geçidi (tahmini) {gateway}")
+    info.add("Süre", f"{time.monotonic() - start:.0f} sn · {len(hosts)} adres × {len(LAN_PORTS)} port")
+    info.note = ("Android 10+ MAC adreslerini uygulamalardan gizlediği için cihaz türü açık portlardan tahmin "
+                 "edilir. Port açmayan ve ICMP dışında yanıt vermeyen cihazlar görünmeyebilir.")
+    rep.summary = f"Yerel ağda {len(found)} cihaz bulundu."
+
+
+# ---------------------------------------------------------------- Hız Testi (aktif: veri harcar)
+
+SPEED = "https://speed.cloudflare.com"
+
+
+def _speed(ctx: Context, rep: Report, v: dict, upload: bool = False) -> None:
+    http = ctx.fast_http
+    lat = []
+    for _ in range(8):
+        ctx.check_cancelled()
+        t = time.perf_counter()
+        r = http.get(f"{SPEED}/__down", params={"bytes": 0}, timeout=8)
+        if r.status_code != 200:
+            raise OsintError(f"Hız sunucusu: HTTP {r.status_code}")
+        lat.append((time.perf_counter() - t) * 1000)
+    lat.sort()
+    core = lat[1:-1] if len(lat) > 4 else lat
+    sec = rep.section("Sonuç (Cloudflare)")
+    med = statistics.median(core)
+    jitter = statistics.mean(abs(a - b) for a, b in zip(core, core[1:])) if len(core) > 1 else 0
+    sec.add("Gecikme (HTTP)", f"{med:.0f} ms", level=Level.OK if med < 60 else Level.WARN if med < 150 else Level.BAD)
+    sec.add("Titreşim (jitter)", f"{jitter:.0f} ms", level=Level.OK if jitter < 20 else Level.WARN)
+    rep.changed()
+    used = 0
+    if not upload:
+        speeds = []
+        for size in (1_000_000, 5_000_000, (v.get("mb") or 10) * 1_000_000):
+            ctx.check_cancelled()
+            t = time.perf_counter()
+            r = http.get(f"{SPEED}/__down", params={"bytes": size}, timeout=60)
+            secs = time.perf_counter() - t
+            n = len(r.content)
+            used += n
+            if n and secs > 0:
+                speeds.append(n * 8 / secs / 1e6)
+            rep.summary = f"İndiriliyor… {used / 1e6:.0f} MB"
+            rep.changed()
+        best = max(speeds) if speeds else 0
+        sec.add("İndirme", f"{best:.1f} Mbps", level=Level.OK if best >= 25 else Level.WARN if best >= 5 else Level.BAD)
+    else:
+        speeds = []
+        for size in (1_000_000, 3_000_000):
+            ctx.check_cancelled()
+            payload = b"0" * size
+            t = time.perf_counter()
+            r = http.post(f"{SPEED}/__up", data=payload, timeout=60)
+            secs = time.perf_counter() - t
+            used += size
+            if r.status_code == 200 and secs > 0:
+                speeds.append(size * 8 / secs / 1e6)
+        best = max(speeds) if speeds else 0
+        sec.add("Yükleme", f"{best:.1f} Mbps", level=Level.OK if best >= 10 else Level.WARN if best >= 2 else Level.BAD)
+    sec.add("Kullanılan veri", f"{used / 1e6:.1f} MB")
+    rep.summary = None
+
+
+def speed_mb(value: str) -> int:
+    try:
+        n = int(value.strip() or 10)
+    except ValueError as e:
+        raise ValueError("5 ile 100 arası MB") from e
+    if not 5 <= n <= 100:
+        raise ValueError("5 ile 100 arası MB")
+    return n
+
+
+ACTIVE = ("Bu araç hedefe doğrudan bağlantı açar. Yalnızca sahibi olduğunuz ya da test için yazılı izin "
+          "aldığınız sistemlerde kullanın; izinsiz tarama birçok ülkede suçtur (TCK 243).")
+
+register(Tool("portscan", "Port Tarama", f"Tek hostta {len(TOP_PORTS)} yaygın TCP portu, servis ve banner", "LAN",
+              "Ağ Araçları", [
+                  Action("scan", "Tara", (Field("target", "Hedef (tek IP veya domain)", "192.168.1.1", "url",
+                                                scan_target),), _portscan, consent=ACTIVE)]))
+register(Tool("lan", "Yerel Ağ Keşfi", "Wi-Fi ağınızdaki cihazlar ve türleri", "ROUTER", "Ağ Araçları", [
+    Action("scan", "Tara", (), _lan,
+           consent="Bağlı olduğunuz Wi-Fi ağındaki tüm adreslere bağlantı denemesi yapılır. Yalnızca kendi "
+                   "ağınızda ya da yöneticisi olduğunuz ağlarda kullanın.")]))
+register(Tool("speedtest", "Hız Testi", "Gecikme, titreşim, indirme/yükleme hızı", "SPEED", "Ağ Araçları", [
+    Action("download", "İndirme", (Field("mb", "Test boyutu (MB)", "10", "number", speed_mb, optional=True),),
+           _speed, consent="Hız testi mobil veride yaklaşık 15-110 MB veri harcar. Devam edilsin mi?"),
+    Action("upload", "Yükleme", (), lambda c, r, v: _speed(c, r, v, upload=True),
+           consent="Yükleme testi yaklaşık 4 MB veri gönderir. Devam edilsin mi?")]))

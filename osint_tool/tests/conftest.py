@@ -87,6 +87,7 @@ def offline_dns(monkeypatch):
     # Ham soket açan yardımcılar birim testlerinde ağa çıkmasın.
     monkeypatch.setattr(nettools, "local_ip", lambda: "192.168.1.23")
     monkeypatch.setattr(nettools, "tcp_rtt", lambda *a, **k: None)
+    monkeypatch.setattr(nettools, "probe_port", lambda *a, **k: ("filtered", ""))
     yield
     dns.reset_health()
 
