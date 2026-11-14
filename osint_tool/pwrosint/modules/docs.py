@@ -58,6 +58,30 @@ TOOL_DOCS: dict[str, tuple[str, tuple[str, ...], str]] = {
         ("Tüm Ağ & Domain ve Web araçlarının kaynakları",),
         "Tamamı 1-3 dakika sürebilir; tarama sırasında iptal edilebilir. Hedefe yalnızca birkaç sayfa isteği "
         "gönderilir, port taraması yapılmaz."),
+    "emailheader": (
+        "Şüpheli bir e-postanın ham başlıklarını adli olarak inceler: alıcı sunucunun SPF/DKIM/DMARC kararı, "
+        "From/Reply-To/Return-Path/Message-ID tutarlılığı, marka taklidi, sunucudan sunucuya teslim yolu ve "
+        "gecikmeler, gönderenin ilk public IP adresi.",
+        ("Yalnızca cihazda (çevrimdışı)",),
+        "Yalnızca en üstteki Authentication-Results dikkate alınır; alttakiler sahtelenebilir. Tüm kontrollerden "
+        "geçen bir e-posta da oltalama olabilir. Başlıklar geçmişe kaydedilmez."),
+    "subnet": (
+        "IPv4/IPv6 ağ hesaplayıcı: ağ ve yayın adresi, maske, wildcard, kullanılabilir aralık, adres sayısı, ağ "
+        "türü (özel, CGNAT, public), ikili maske, ters DNS bölgesi ve daha küçük alt ağlara bölme önizlemesi.",
+        ("Yalnızca cihazda (çevrimdışı)",), ""),
+    "decoder": (
+        "JWT token'larını çözer ve güvenlik açısından değerlendirir (alg:none, HS256, süre, jku/kid); Base64, hex "
+        "ve URL kodlamalarını otomatik tanıyıp çözer (gzip/zlib dahil); Unix zaman damgası ile tarih arasında "
+        "dönüşüm yapar.",
+        ("Yalnızca cihazda (çevrimdışı)",), "JWT imzası doğrulanmaz (gizli anahtar gerekir). Girdiler kaydedilmez."),
+    "hash": (
+        "Bir hash'in olası algoritmasını (MD5, NTLM, SHA, bcrypt, sha512crypt, Argon2, phpass…) ve Hashcat mod "
+        "numarasını bulur; metinden MD5, SHA-1/256/512, SHA3, BLAKE2, CRC32 ve NTLM üretir.",
+        ("Yalnızca cihazda (çevrimdışı)",), "Aynı uzunluktaki algoritmalar (MD5/NTLM) yalnızca bağlamdan ayırt edilebilir."),
+    "password": (
+        "Kriptografik rastgele üreteçle güçlü şifreler, karışan karakter içermeyen okunaklı şifreler ve akılda "
+        "kalır parola cümleleri üretir; her birinin entropisini gösterir.",
+        ("Yalnızca cihazda (çevrimdışı)",), "Üretilen şifreler hiçbir yere gönderilmez ve kaydedilmez."),
     "dns": (
         "A, AAAA, CNAME, MX, NS, TXT, SOA, CAA kayıtlarını sorgular; SPF, DMARC ve CAA politikalarını "
         "değerlendirip domainin hangi servisleri kullandığını doğrulama kayıtlarından çıkarır.",

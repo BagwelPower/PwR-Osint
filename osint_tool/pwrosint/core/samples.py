@@ -44,5 +44,30 @@ SAMPLES = {
     ("vehicle", "plate"): {"plate": "34 ABC 123"},
 }
 
+SAMPLE_JWT = ("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkFsaSBWZWxpIiwiaWF0IjoxNz"
+              "AwMDAwMDAwLCJleHAiOjE3MDAwMDM2MDB9.c2lnbmF0dXJl")
+SAMPLE_HEADERS = """Received: from mail.ornek.com (mail.ornek.com [93.184.216.34])
+        by mx.google.com with ESMTPS id x1; Mon, 13 Jan 2025 10:00:05 +0000
+Received: from [10.0.0.5] (unknown [203.0.113.7])
+        by mail.ornek.com with ESMTPSA; Mon, 13 Jan 2025 10:00:01 +0000
+Authentication-Results: mx.google.com; spf=pass smtp.mailfrom=ornek.com; dkim=pass header.d=ornek.com;
+        dmarc=pass header.from=ornek.com
+From: Ali Veli <ali@ornek.com>
+To: ayse@example.org
+Subject: Toplantı
+Date: Mon, 13 Jan 2025 10:00:00 +0000
+Message-ID: <abc123@ornek.com>"""
+
+SAMPLES.update({
+    ("emailheader", "analyze"): {"headers": SAMPLE_HEADERS},
+    ("subnet", "calc"): {"net": "192.168.1.10/24"},
+    ("decoder", "jwt"): {"token": SAMPLE_JWT},
+    ("decoder", "auto"): {"text": "SGVsbG8gUHdSIE9zaW50IQ=="},
+    ("decoder", "time"): {"time": "1700000000"},
+    ("hash", "identify"): {"hash": "5f4dcc3b5aa765d61d8327deb882cf99"},
+    ("hash", "generate"): {"text": "parola"},
+    ("password", "generate"): {"length": "20"},
+})
+
 # Bu işlemler API anahtarı ister; anahtar yoksa "anahtar gerekli" mesajı beklenen davranıştır.
 NEEDS_KEY = {("shodan", "search")}

@@ -18,9 +18,16 @@ class Field:
     name: str
     label: str
     placeholder: str = ""
-    kind: str = "text"  # text | email | phone | number | url | password | name
+    kind: str = "text"  # text | email | phone | number | url | password | name | multiline | file
     parse: Callable[[str], Any] = str.strip
     optional: bool = False
+    # Hassas alan: değeri geçmişe, rapor başlığına, kayıtlı raporlara ve dışa aktarmaya yazılmaz
+    # (JWT, e-posta başlığı, şifre gibi). "password" türü her zaman hassastır.
+    sensitive: bool = False
+
+    @property
+    def is_sensitive(self) -> bool:
+        return self.sensitive or self.kind == "password"
 
 
 @dataclass(frozen=True)
@@ -31,6 +38,8 @@ class Action:
     run: Runner
     needs_key: Optional[str] = None   # bu anahtar olmadan işlem hiç çalışmaz
     better_with: Optional[str] = None  # anahtar olmadan yedek kaynakla çalışır, anahtarla daha ayrıntılı
+    # Aktif araç (hedefe doğrudan bağlantı açar): her çalıştırmadan önce kullanıcıya gösterilen onay metni.
+    consent: Optional[str] = None
 
 
 @dataclass
@@ -58,8 +67,11 @@ CATEGORY_INFO = {
     "Ağ & Domain": "Domain ve IP altyapısı: WHOIS, DNS, sertifika, alt alan adları, ağ sahibi.",
     "Web": "Web sitelerinin teknolojisi, iletişim bilgileri, gizli yolları ve geçmiş taramaları.",
     "Tehdit İstihbaratı": "Sızıntılar, zararlı itibarı, oltalama domainleri ve kara listeler.",
+    "Güvenlik Analizi": "Zafiyet (CVE) araştırması ve şüpheli e-postaların adli incelemesi.",
+    "Ağ Araçları": "Sistem ve ağ yöneticisinin saha araçları: bağlantı, port, yerel ağ, ping, HTTP, hız.",
     "Kripto": "Kripto para adreslerinin bakiye ve işlem geçmişi.",
     "Görsel & Dosya": "Fotoğraflardaki gizli meta veriler (cihaz, tarih, GPS) ve tersine arama.",
+    "Araç Kutusu": "Günlük işler için çevrimdışı araçlar: subnet, JWT, hash, kodlama, şifre, zaman.",
     "Diğer": "Konum, Wi-Fi/MAC ve araç (VIN, plaka) sorguları.",
 }
 CATEGORIES = list(CATEGORY_INFO)

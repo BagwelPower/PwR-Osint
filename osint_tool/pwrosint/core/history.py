@@ -39,7 +39,7 @@ class History:
             return []
 
     def add(self, tool_id: str, action: Action, raw: dict[str, str]) -> None:
-        values = {f.name: raw.get(f.name, "") for f in action.fields if f.kind != "password"}
+        values = {f.name: raw.get(f.name, "") for f in action.fields if not f.is_sensitive}
         if not any(values.values()):
             return
         self.entries = [e for e in self.entries

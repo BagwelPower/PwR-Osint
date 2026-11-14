@@ -410,14 +410,16 @@ class ToolScreen:
                     "Fotoğraf seç", icon=ft.Icons.PHOTO_LIBRARY,
                     on_click=lambda e, t=tf: self.page.run_task(self.pick_image, t)))
                 continue
+            multiline = f.kind == "multiline"
             tf = text_field(
                 f.label, hint_text=f.placeholder, value=prefill.get(f.name, ""),
-                keyboard_type=KEYBOARD.get(f.kind, ft.KeyboardType.TEXT),
+                multiline=multiline, min_lines=5 if multiline else None, max_lines=12 if multiline else None,
+                keyboard_type=ft.KeyboardType.MULTILINE if multiline else KEYBOARD.get(f.kind, ft.KeyboardType.TEXT),
                 password=f.kind == "password", can_reveal_password=f.kind == "password",
                 text_style=ft.TextStyle(font_family=MONO), autocorrect=False, enable_suggestions=False,
                 capitalization=(ft.TextCapitalization.WORDS if f.kind == "name"
                                 else ft.TextCapitalization.NONE),
-                on_submit=lambda e: self.run(), on_change=self.clear_error)
+                on_submit=None if multiline else (lambda e: self.run()), on_change=self.clear_error)
             self.inputs[f.name] = tf
             self.fields_col.controls.append(tf)
 
@@ -494,6 +496,21 @@ class ToolScreen:
                 self.inputs[name].error = msg
             self.page.update()
             return
+        if self.action.consent:
+            def proceed(e):
+                self.page.pop_dialog()
+                self._start(values, raw)
+
+            self.page.show_dialog(ft.AlertDialog(
+                modal=True, title=ft.Row([ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=LEVEL_COLOR[Level.WARN]),
+                                          ft.Text("Aktif tarama onayı")]),
+                content=ft.Text(self.action.consent),
+                actions=[ft.TextButton("İptal", on_click=lambda e: self.page.pop_dialog()),
+                         ft.FilledButton("Yetkiliyim, başlat", on_click=proceed)]))
+            return
+        self._start(values, raw)
+
+    def _start(self, values: dict, raw: dict) -> None:
         self.app.history.add(self.tool.id, self.action, raw)
         self.ctx = Context(self.app.settings)
         self.results.controls.clear()

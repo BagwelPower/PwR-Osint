@@ -125,6 +125,15 @@ def ask_inputs(action: Action) -> dict | None:
             if f.kind == "password":
                 console.print(label + ": ", end="")
                 raw[f.name] = getpass.getpass("")
+            elif f.kind == "multiline":
+                console.print(label + " [grey50](yapıştırın; bitirmek için boş satırda Enter, ya da @dosya)[/]")
+                lines = []
+                while True:
+                    line = input()
+                    if not line.strip() and lines:
+                        break
+                    lines.append(line)
+                raw[f.name] = _read_multiline("\n".join(lines))
             else:
                 raw[f.name] = Prompt.ask(label, default="", show_default=False)
             if not raw[f.name].strip() and not f.optional:
@@ -134,6 +143,17 @@ def ask_inputs(action: Action) -> dict | None:
         except InputError as e:
             for name, msg in e.problems.items():
                 console.print(f"[red]✖ {name}: {msg}[/]")
+
+
+def _read_multiline(value: str) -> str:
+    """'@dosya' dosyadan, '-' standart girdiden okur; aksi halde değeri olduğu gibi döndürür."""
+    v = value.strip()
+    if v == "-":
+        return sys.stdin.read()
+    if v.startswith("@") and len(v) > 1:
+        with open(v[1:], encoding="utf-8", errors="replace") as f:
+            return f.read()
+    return value
 
 
 def interactive() -> None:
@@ -193,6 +213,10 @@ def tool_menu(tool: Tool, settings) -> None:
         values = ask_inputs(action)
         if values is None:
             return
+        if action.consent:
+            console.print(f"[yellow]! {action.consent}[/]")
+            if Prompt.ask("Devam edilsin mi?", choices=["e", "h"], default="h") != "e":
+                continue
         render(execute(ctx, tool, action, values))
         if Prompt.ask("\n[grey50]Yeni sorgu? (Enter = menü)[/]", choices=["e", ""], default="",
                       show_choices=False) != "e":
@@ -260,11 +284,17 @@ def one_shot(args: argparse.Namespace) -> int:
         need = " ".join(f"<{f.name}>" for f in action.fields)
         console.print(f"[red]Kullanım:[/] pwrosint {tool.id} {action.id} {need}")
         return 2
+    raw = {f.name: (_read_multiline(v) if f.kind == "multiline" else v) for f, v in zip(action.fields, rest)}
     try:
-        values = parse_inputs(action, {f.name: v for f, v in zip(action.fields, rest)})
+        values = parse_inputs(action, raw)
     except InputError as e:
         console.print(f"[red]✖ {e}[/]")
         return 2
+    if action.consent and not args.yes:
+        console.print(f"[yellow]! {action.consent}[/]")
+        if not sys.stdin.isatty() or Prompt.ask("Devam edilsin mi?", choices=["e", "h"], default="h") != "e":
+            console.print("[grey50]İptal edildi (onay için --yes).[/]")
+            return 2
     ctx = Context(load_settings())
     if args.json:
         report = run_action(ctx, tool, action, values)
@@ -287,6 +317,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("values", nargs="*", help="[işlem] girdiler")
     parser.add_argument("--json", action="store_true", help="sonucu JSON olarak yaz")
     parser.add_argument("--html", metavar="DOSYA", help="raporu tek dosyalık HTML olarak kaydet")
+    parser.add_argument("--yes", action="store_true", help="aktif araçların onay sorusunu atla")
     parser.add_argument("--list", action="store_true", help="araçları listele")
     parser.add_argument("--version", action="version", version=f"PwR Osint {__version__}")
     args = parser.parse_args(argv)

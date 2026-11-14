@@ -18,7 +18,9 @@ log = logging.getLogger("pwrosint")
 def run_action(ctx: Context, tool: Tool, action: Action, values: dict[str, Any],
                on_change: Optional[Callable[[Report], None]] = None) -> Report:
     target = " / ".join(_fmt(values[f.name]) for f in action.fields
-                        if f.kind != "password" and values.get(f.name) is not None)
+                        if not f.is_sensitive and values.get(f.name) is not None)
+    if len(target) > 80:
+        target = target[:77] + "…"
     report = Report(f"{tool.title} · {action.title}", target, on_change)
     report.tool_id, report.action_id = tool.id, action.id
     started = time.monotonic()
