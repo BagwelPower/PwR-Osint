@@ -71,10 +71,16 @@ def sample_image_file(tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
-def offline_dns(monkeypatch):
+def offline_dns(request, monkeypatch):
     """Birim testleri gerçek ağa UDP/53 göndermesin, sistem çözümleyicisine gitmesin; taşıyıcı
     sağlık durumu testler arasında taşınmasın. DoH taşıyıcıları sahte HTTP üzerinden çalışır."""
     from pwrosint.core import dns
+
+    if "live" in request.node.nodeid.split("::")[0].split("/"):
+        # Canlı testler gerçek ağı kullanmalı: hiçbir engel uygulanmaz.
+        dns.reset_health()
+        yield
+        return
 
     def no_network(ctx, name, rtype):
         raise OsintError("testte ağ yok")

@@ -314,10 +314,14 @@ def _fetch_certificate(host: str, port: int, timeout: int) -> dict[str, Any]:
     insecure = ssl.create_default_context()
     insecure.check_hostname = False
     insecure.verify_mode = ssl.CERT_NONE
-    with socket.create_connection((host, port), timeout=timeout) as sock, \
-            insecure.wrap_socket(sock, server_hostname=host) as tls:
-        der = tls.getpeercert(binary_form=True)
-        out.update(der=der, version=tls.version(), cipher=tls.cipher(), cert=_decode_der(der))
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as sock, \
+                insecure.wrap_socket(sock, server_hostname=host) as tls:
+            der = tls.getpeercert(binary_form=True)
+            out.update(der=der, version=tls.version(), cipher=tls.cipher(), cert=_decode_der(der))
+    except OSError as e:  # sertifika doğrulanamadı bilgisi korunur; ayrıntı alınamadı
+        raise OsintError(f"{host}:{port} sertifika doğrulanamadı ({out['error']}); ayrıntı için ikinci "
+                         f"bağlantı da koptu: {e}") from e
     return out
 
 

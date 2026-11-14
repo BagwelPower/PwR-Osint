@@ -12,6 +12,18 @@ from pwrosint.core.registry import get_tool
 from pwrosint.core.report import Level
 from pwrosint.core.runner import run_action
 
+OUTAGE = ("bağlantı kurulamadı", "zaman aşımı", "HTTP 502", "HTTP 503", "HTTP 504", "şu anda yoğun",
+          "istek limiti", "limiti doldu")
+
+
+def skip_if_outage(report):
+    """Dış servis kesintisi kodumuzun hatası değildir: 'atlandı' olarak raporla. Kod hataları
+    ('Beklenmeyen hata') asla atlanmaz."""
+    errs = [e for e in report.errors if not e.startswith("Beklenmeyen hata")]
+    if errs and len(errs) == len(report.errors) and all(any(o in e for o in OUTAGE) for e in errs):
+        pytest.skip("dış servis kesintisi: " + "; ".join(errs)[:200])
+
+
 pytestmark = pytest.mark.skipif(os.environ.get("PWR_LIVE") != "1", reason="canlı testler kapalı")
 
 
@@ -20,6 +32,7 @@ def run(tool_id, action_id=None, **values):
     action = tool.action(action_id) if action_id else tool.actions[0]
     report = run_action(Context(Settings(timeout=20)), tool, action, values)
     print(report.to_text())
+    skip_if_outage(report)
     return report
 
 
@@ -296,7 +309,7 @@ def test_globalping_ping_real():
 
 
 def test_globalping_traceroute_real():
-    r = run("globalping", "traceroute", target="github.com", location="Europe")
+    r = run("globalping", "traceroute", target="1.1.1.1", location="Europe")  # github.com ICMP filtreler
     assert not r.errors, r.errors
     traces = [s for s in r.sections if s.title.startswith("Traceroute")]
     assert traces and len(traces[0].items) >= 3

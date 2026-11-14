@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # tests/samples.py
+sys.path.insert(0, str(Path(__file__).resolve().parent))      # test_live.skip_if_outage
 
 from pwrosint.core.config import Settings
 from pwrosint.core.context import Context
@@ -30,6 +31,8 @@ def test_real_response(tool, action):
     report = run_action(Context(Settings(timeout=25)), tool, action, values)
     print(report.to_text())
     assert not [e for e in report.errors if e.startswith("Beklenmeyen hata")]
+    from test_live import skip_if_outage
+    skip_if_outage(report)
     if (tool.id, action.id) in NEEDS_KEY:
         assert report.missing_key and not report.errors
         return
